@@ -4,11 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TVStream</title>
+<script>if(/Coolita|Smart-TV/i.test(navigator.userAgent)) document.documentElement.className += ' tv';</script>
 <style>
 :root{--bg:#141414;--surface:#262626;--surface2:#3b3b3b;--text:#fff;--muted:#b3b3b3;--accent:#e50914}
 *{box-sizing:border-box;margin:0}
-/* TV remote pointer: keep the browser-rendered mouse cursor out of the TV UI. */
-html,body,body *{cursor:none!important}
+/* Hide the browser cursor only on the TV. Desktop previews keep a normal mouse. */
+.tv,.tv body,.tv body *{cursor:none!important}
 html{font-size:1.25vw;font-size:clamp(12px,1.25vw,26px);background:var(--bg)}
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 body{font-family:"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:var(--text);background:var(--bg);min-height:100vh;overflow-x:hidden}
@@ -82,7 +83,7 @@ input.f:focus{transform:none}
    put while the source list scrolls. */
 #streams .xclose{position:fixed;top:3.4rem;right:3.4rem;width:2.8rem;height:2.8rem;border-radius:50%;background:rgba(255,255,255,.16);color:#fff;font-size:1.5rem;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;z-index:2}
 #streams .xclose:focus{background:var(--accent);box-shadow:0 0 0 .2rem #fff}
-#player{position:fixed;top:0;right:0;bottom:0;left:0;inset:0;z-index:20;background:#000}
+#player{position:fixed;top:0;right:0;bottom:0;left:0;inset:0;z-index:20;background:#000;outline:none}
 #player video{width:100%;height:100%;object-fit:contain}
 video::cue{background:rgba(0,0,0,.7);color:#fff;font-size:var(--subtitle-size,1.4em)}
 #ctrls{position:absolute;left:0;right:0;bottom:0;padding:4rem 3rem 1.4rem;background:linear-gradient(transparent,rgba(0,0,0,.85));transition:opacity .25s}
@@ -146,14 +147,6 @@ video::cue{background:rgba(0,0,0,.7);color:#fff;font-size:var(--subtitle-size,1.
   .ep .eth{height:6.1875rem}
 }
 </style>
-<style>
-
-/* Coolita cursor experiment: transparent cursor image; navigation/focus logic unchanged */
-html, body, body *, body *::before, body *::after {
-  cursor: url("data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=") 0 0, none !important;
-}
-
-</style>
 </head>
 <body>
 <div id="nav">
@@ -169,7 +162,7 @@ html, body, body *, body *::before, body *::after {
   <section id="settings" class="view hidden set"></section>
 </main>
 <div id="streams" class="hidden" role="dialog" aria-modal="true" aria-labelledby="st-title"><div class="f xclose" id="st-close" tabindex="0" role="button" aria-label="Close sources">&#10005;</div><div class="box"><h2 id="st-title"></h2><div id="st-list"></div></div></div>
-<div id="player" class="hidden"><video id="v" playsinline></video>
+<div id="player" class="hidden" tabindex="-1"><video id="v" playsinline></video>
   <div id="ctrls" class="off">
     <div id="ptop"><div class="f cb" id="cclose" tabindex="0" role="button" aria-label="Close player"></div><div id="ptitle"></div></div>
     <div class="prog"><div class="f" id="bar" tabindex="0" role="slider" aria-label="Seek" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="fillbar"></div></div><div id="time">0:00</div></div>
@@ -200,20 +193,11 @@ html, body, body *, body *::before, body *::after {
 <div id="toast" role="status" aria-live="polite"></div>
 
 <script>
-// hls.js is loaded from beside this file when a copy is deployed there, so the
-// app has no hard dependency on a third-party CDN. Falls back to cdnjs when the
-// local copy is missing.
-(function(){
-  var d = document, s = d.createElement('script');
-  s.src = 'hls.min.js';
-  s.onerror = function(){
-    var c = d.createElement('script');
-    c.src = 'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js';
-    d.head.appendChild(c);
-  };
-  d.head.appendChild(s);
-})();
+// hls.js is vendored beside this file. Loading it synchronously guarantees
+// window.Hls exists before the app's playback code runs; there is no CDN race.
+// If the file is ever missing, native HLS and direct playback still work.
 </script>
+<script src="hls.min.js"></script>
 <script>
 // Addons installed on first launch. Add your own manifest URLs here.
 const PRESET = ['https://v3-cinemeta.strem.io/manifest.json'];
@@ -224,7 +208,7 @@ const store = {
   get(k, d){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch(e){ return d; } },
   set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} }
 };
-const base = u => u.trim().replace(/^stremio:/, 'https:').replace(/\/manifest\.json$/, '').replace(/\/$/, '');
+const base = u => u.trim().replace(/^stremio:/, 'https:').replace(/\/+$/, '').replace(/\/manifest\.json$/, '').replace(/\/+$/, '');
 const enc = id => encodeURIComponent(id).replace(/%3A/gi, ':');
 async function j(u, ms){
   // AbortController is absent on some TV browsers: keep the call working,
@@ -248,20 +232,61 @@ async function fetchText(u, ms){
 }
 let toastT;
 function toast(t){ const e = $('#toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => e.classList.remove('show'), 3200); }
+// Do not leave the TV on a frozen screen when a malformed addon or an
+// unhandled promise rejection escapes a loader. Resource errors (images,
+// scripts) are ignored here; the UI already degrades if those fail.
+let errToastAt = 0;
+function appError(err){
+  try { console.error(err); } catch(e){}
+  const now = Date.now();
+  if(now - errToastAt < 5000) return;
+  errToastAt = now;
+  toast('Something went wrong. Press Back and try again.');
+}
+addEventListener('error', e => {
+  if(e && e.target && e.target !== window && e.target.tagName) return;
+  appError(e && (e.error || e.message));
+}, true);
+addEventListener('unhandledrejection', e => appError(e && e.reason));
 
 let addons = [], cur = 'home';
 const progressKey = 'tvstream.progress.v1';
-const progressAll = () => store.get(progressKey, {});
+const progressAll = () => {
+  const all = store.get(progressKey, {});
+  if(!all || typeof all !== 'object' || Array.isArray(all)) return {};
+  const out = {};
+  Object.keys(all).forEach(k => {
+    const x = all[k];
+    if(x && typeof x === 'object' && !Array.isArray(x)) out[k] = x;
+  });
+  return out;
+};
 const progressId = (type, id) => type + ':' + id;
+// A Continue Watching item must be able to rebuild the episode list. Keep a
+// compact copy (no descriptions or full metadata) so localStorage stays small.
+const compactEpisodes = list => Array.isArray(list) ? list.filter(v => v && v.id).slice(0, 500).map(v => ({
+  id: v.id, title: v.title || v.name || '', season: v.season, episode: v.episode, thumbnail: v.thumbnail || ''
+})) : null;
 function saveProgress(){
   const v = $('#v');
-  if(!lastStream || !lastStream.id || !isFinite(v.duration) || v.duration <= 0) return;
+  if(!lastStream || !lastStream.started || !lastStream.id || v.readyState < 1 || !isFinite(v.duration) || v.duration <= 0) return;
   const all = progressAll(), key = progressId(lastStream.type, lastStream.id);
   const done = v.ended || v.currentTime >= v.duration - 20;
   if(done) delete all[key];
-  else all[key] = { type:lastStream.type, id:lastStream.id, title:$('#ptitle').textContent,
-    position:v.currentTime, duration:v.duration, poster:lastStream.poster || '', updated:Date.now(),
-    nextEpisode:lastStream.nextEpisode || null };
+  else {
+    if(!lastStream._epCompact && Array.isArray(lastStream.epList)) lastStream._epCompact = compactEpisodes(lastStream.epList);
+    all[key] = { type:lastStream.type, id:lastStream.id, title:$('#ptitle').textContent || lastStream.title || '',
+      position:v.currentTime, duration:v.duration, poster:lastStream.poster || '', updated:Date.now(),
+      nextEpisode:lastStream.nextEpisode || null,
+      epList:lastStream._epCompact || null, epIndex:lastStream.epIndex,
+      seriesName:lastStream.seriesName || '' };
+  }
+  // Bound storage growth; older items are not useful on a 200MB TV anyway.
+  const keys = Object.keys(all);
+  if(keys.length > 50){
+    keys.sort((a,b) => (all[a].updated || 0) - (all[b].updated || 0));
+    keys.slice(0, keys.length - 50).forEach(k => delete all[k]);
+  }
   store.set(progressKey, all);
 }
 function resumePosition(type,id){
@@ -295,6 +320,7 @@ function renderContinueRow(){
       ev.preventDefault(); ev.stopPropagation();
       if(!removeProgress(item.type, item.id)) return;
       const sib = c.nextElementSibling || c.previousElementSibling;
+      if(bgObserver) bgObserver.unobserve(poster);
       c.remove();
       if(!row.list.children.length){
         row.el.remove();
@@ -309,23 +335,50 @@ function renderContinueRow(){
     const t=document.createElement('div'); t.className='t';
     t.innerHTML = esc(item.title) + '<br>' + esc(fmt(left)) + ' left of ' + esc(fmt(item.duration));
     c.appendChild(poster); c.appendChild(t);
-    c.setAttribute('aria-label', item.title + ', ' + fmt(left) + ' left');
+    c.setAttribute('aria-label', (item.title || 'Continue watching') + ', ' + fmt(left) + ' left');
     c.onclick=()=>{ pendingResume = item.position; streams(item.type,item.id,item.title,item); };
     row.list.appendChild(c);
   });
   hydrateBg(row.list);
 }
 let pendingResume = null;
-let nextTimer = null, subtitleSize = Number(store.get('subtitleSize',1.4)), subtitleDelay = Number(store.get('subtitleDelay',0));
+let nextTimer = null;
+let subtitleSize = Number(store.get('subtitleSize',1.4));
+let subtitleDelay = Number(store.get('subtitleDelay',0));
+if(!isFinite(subtitleSize) || subtitleSize <= 0) subtitleSize = 1.4;
+if(!isFinite(subtitleDelay)) subtitleDelay = 0;
+subtitleSize = Math.max(.7, Math.min(2.5, subtitleSize));
+subtitleDelay = Math.max(-10, Math.min(10, subtitleDelay));
+function cancelNextAutoplay(){
+  clearTimeout(nextTimer); nextTimer = null;
+  const o = $('#nextOverlay');
+  const wasOpen = !!(o && !o.classList.contains('hidden'));
+  const active = document.activeElement;
+  if(o) o.classList.add('hidden');
+  // Never leave focus on a control that just disappeared.
+  if(wasOpen && active && o.contains(active) && !$('#player').classList.contains('hidden')) $('#player').focus();
+}
 function applySubtitleSize(){ document.documentElement.style.setProperty('--subtitle-size',subtitleSize+'em'); }
 applySubtitleSize();
 
 // ---------- addons ----------
 function getUrls(){
   let urls = store.get('urls', null);
-  if(!urls){ urls = PRESET.slice(); }
+  if(!Array.isArray(urls)) urls = PRESET.slice();
+  const seen = new Set();
+  urls = urls.filter(u => {
+    if(typeof u !== 'string' || !u.trim()) return false;
+    const b = base(u);
+    if(seen.has(b)) return false;
+    seen.add(b); return true;
+  });
   const p = new URLSearchParams(location.search).getAll('addon');
-  p.forEach(u => { if(!urls.map(base).includes(base(u))) urls.push(u); });
+  p.forEach(u => {
+    if(!u) return;
+    const b = base(u);
+    if(seen.has(b)) return;
+    seen.add(b); urls.push(u);
+  });
   store.set('urls', urls);
   return urls;
 }
@@ -333,11 +386,11 @@ function getUrls(){
 // app), start from an optional config.json beside this file:
 // { "addons": ["https://.../manifest.json"] }
 async function loadDefaults(){
-  if(store.get('urls', null)) return;
+  if(store.get('urls', null) != null) return;
   try {
     const c = await j('config.json', 4000);
     if(c && Array.isArray(c.addons)){
-      const list = c.addons.filter(u => typeof u === 'string' && u);
+      const list = c.addons.filter(u => typeof u === 'string' && u.trim());
       if(list.length) store.set('urls', list);
     }
   } catch(e){}
@@ -346,26 +399,38 @@ async function loadAddons(){
   await loadDefaults();
   const urls = getUrls(); addons = [];
   await Promise.all(urls.map(async u => {
-    try { const b = base(u); addons.push({ u, b, m: await j(b + '/manifest.json', 8000) }); } catch(e){}
+    try {
+      const b = base(u);
+      const m = await j(b + '/manifest.json', 8000);
+      if(!m || typeof m !== 'object' || Array.isArray(m)) return;
+      if(m.resources != null && !Array.isArray(m.resources)) return;
+      if(m.catalogs != null && !Array.isArray(m.catalogs)) return;
+      addons.push({ u, b, m });
+    } catch(e){}
   }));
   addons.sort((a, b) => urls.indexOf(a.u) - urls.indexOf(b.u));
 }
 function supports(m, res, type, id){
-  return (m.resources || []).some(r => {
-    const o = typeof r === 'object';
+  if(!m || typeof m !== 'object' || !Array.isArray(m.resources)) return false;
+  return m.resources.some(r => {
+    const o = r && typeof r === 'object';
     if((o ? r.name : r) !== res) return false;
     const types = (o && r.types) || m.types || [];
+    if(!Array.isArray(types)) return false;
     const pre = (o && r.idPrefixes) || m.idPrefixes;
     if(types.length && !types.includes(type)) return false;
-    if(pre && pre.length && !pre.some(p => id.startsWith(p))) return false;
+    if(pre != null){
+      if(!Array.isArray(pre)) return false;
+      if(pre.length && !pre.some(p => typeof p === 'string' && String(id).startsWith(p))) return false;
+    }
     return true;
   });
 }
-const needsExtra = c => (c.extra || []).some(e => e.isRequired) || (c.extraRequired || []).length > 0;
-const searchable = c => (c.extra || []).some(e => e.name === 'search') || (c.extraSupported || []).includes('search') || (c.extraRequired || []).includes('search');
+const needsExtra = c => (Array.isArray(c.extra) && c.extra.some(e => e && e.isRequired)) || (Array.isArray(c.extraRequired) && c.extraRequired.length > 0);
+const searchable = c => (Array.isArray(c.extra) && c.extra.some(e => e && e.name === 'search')) || (Array.isArray(c.extraSupported) && c.extraSupported.includes('search')) || (Array.isArray(c.extraRequired) && c.extraRequired.includes('search'));
 
 // ---------- views ----------
-let homeBuilt = false, lastFocus = null, searchActive = false;
+let homeBuilt = false, homeDirty = false, lastFocus = null, searchActive = false;
 // Bumped by every view change. Async loaders capture it and bail if it moved,
 // so a fetch that finishes after the user navigated away can neither render
 // over the new view nor steal focus from it.
@@ -373,25 +438,46 @@ let viewGen = 0;
 function show(v){
   cur = v; viewGen++;
   ['home', 'detail', 'settings'].forEach(n => $('#' + n).classList.toggle('hidden', n !== v));
+  // If focus is still inside a view that just went hidden, move it somewhere
+  // visible. Otherwise Enter can activate a hidden card/form while the new
+  // view is still loading.
+  const active = document.activeElement;
+  if(active && active !== document.body && active.closest && active.closest('.view') && !active.closest('#' + v)){
+    const f = document.querySelector('#nav .f'); if(f) f.focus();
+  }
   window.scrollTo(0, 0);
+  // Keep only the visible view's posters observed, and re-observe it when the
+  // user returns. This prevents detached DOM nodes from accumulating in the
+  // IntersectionObserver across repeated Home/Detail navigations.
+  if(bgObserver) bgObserver.disconnect();
+  ['home', 'detail', 'settings'].forEach(n => {
+    if(n === v) return;
+    const hiddenView = $('#' + n);
+    if(hiddenView) hiddenView.querySelectorAll('[data-bg]').forEach(unpaintBg);
+  });
+  const view = $('#' + v); if(view) hydrateBg(view);
 }
 function mkRow(title){
   const el = document.createElement('div'); el.className = 'row';
   el.innerHTML = '<h2>' + esc(title) + '</h2><div class="list"></div>';
   return { el, list: el.querySelector('.list') };
 }
-const metaLine = m => [m.releaseInfo || m.year, (m.genres || []).slice(0, 3).join(', '), m.imdbRating ? 'IMDb ' + m.imdbRating : ''].filter(Boolean).join('   |   ');
+const metaLine = m => {
+  m = m || {};
+  const genres = Array.isArray(m.genres) ? m.genres.slice(0, 3).join(', ') : '';
+  return [m.releaseInfo || m.year, genres, m.imdbRating ? 'IMDb ' + m.imdbRating : ''].filter(Boolean).join('   |   ');
+};
 // Background images are CSS values, not HTML text: never HTML-escape them.
 // Setting the property directly also avoids entity decoding differences between
 // innerHTML and setAttribute (which broke URLs containing "&").
 // Poster art is applied lazily. A home screen can hold 400+ cards, and the
 // Coolita guide budgets roughly 200MB for the entire app layer; decoded
 // bitmaps are the bulk of that. A card keeps its URL in data-bg and only
-// becomes a background-image once it is near the viewport.
-const BG_MARGIN = 240;
-// data-bg stays on the element so an image that scrolls far away can be
-// released (unpaintBg) and painted again if the user scrolls back.
-const BG_FAR = 900;
+// becomes a background-image once it is near the viewport. IntersectionObserver
+// does the visibility test without measuring every card on every scroll.
+var bgObserver = typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => {
+  entries.forEach(en => { if(en.isIntersecting) paintBg(en.target); else unpaintBg(en.target); });
+}, { rootMargin: '300px 0px 300px 0px' }) : null;
 function paintBg(el){
   const u = el.getAttribute('data-bg');
   if(u === null || el._p) return;
@@ -402,38 +488,27 @@ function unpaintBg(el){
   if(!el._p) return;
   el._p = 0; el.style.backgroundImage = '';
 }
-function farOut(el){
-  if(!el.offsetParent) return false;          // hidden view: leave as is
-  const r = el.getBoundingClientRect();
-  return r.bottom < -BG_FAR || r.top > innerHeight + BG_FAR || r.right < -BG_FAR || r.left > innerWidth + BG_FAR;
-}
-function inView(el){
-  if(!el.offsetParent) return false;          // inside a hidden view
-  const r = el.getBoundingClientRect();
-  return r.bottom > -BG_MARGIN && r.top < innerHeight + BG_MARGIN &&
-         r.right > -BG_MARGIN && r.left < innerWidth + BG_MARGIN;
+function observeBg(el){
+  if(bgObserver) bgObserver.observe(el);
+  else paintBg(el);   // very old engine: no IntersectionObserver
 }
 function setBg(el, u){
   if(!el) return;
+  if(bgObserver) bgObserver.unobserve(el);
   el.style.backgroundImage = ''; el._p = 0;
   if(!u){ el.removeAttribute('data-bg'); return; }
   // Only escape what can break out of a CSS string. encodeURI() must not be
   // used here: it double-encodes existing %XX escapes (%20 -> %2520).
   el.setAttribute('data-bg', String(u).replace(/[\r\n]/g, '').replace(/["\\]/g, '\\$&'));
-  if(inView(el)) paintBg(el);
+  observeBg(el);
 }
 function hydrateBg(root){
   if(!root || !root.querySelectorAll) return;
   const els = root.querySelectorAll('[data-bg]');
-  for(let i = 0; i < els.length; i++){ if(inView(els[i])) paintBg(els[i]); else if(els[i]._p && farOut(els[i])) unpaintBg(els[i]); }
+  for(let i = 0; i < els.length; i++) observeBg(els[i]);
 }
-let bgT = null;
-addEventListener('scroll', e => {
-  if(bgT) return;
-  bgT = setTimeout(() => { bgT = null; hydrateBg(e.target && e.target.nodeType === 1 ? e.target : document); }, 60);
-}, true);
 // D-pad navigation moves focus before it scrolls: paint the card the user
-// actually landed on without waiting for the scroll.
+// actually landed on without waiting for the observer callback.
 addEventListener('focusin', e => {
   const el = e.target;
   if(el && el.getAttribute && el.getAttribute('data-bg') !== null) paintBg(el);
@@ -452,6 +527,7 @@ function setHero(m, type){
   $('#hplay').onclick = () => { window.currentMediaPoster=m.poster||''; t === 'movie' ? streams(t, m.id, m.name, {poster:m.poster||''}) : detail(t, m.id, m); };
 }
 function fill(row, metas, type){
+  metas = Array.isArray(metas) ? metas.filter(m => m && typeof m === 'object' && !Array.isArray(m)) : [];
   if(!metas.length){ row.el.remove(); return; }
   const hm = metas.find(m => m.background); if(hm) setHero(hm, type);
   metas.slice(0, 30).forEach(m => {
@@ -471,13 +547,30 @@ function fill(row, metas, type){
   if(!a || a === document.body){ const f = document.querySelector('#home .f'); if(f) f.focus(); }
 }
 async function home(){
-  show('home'); homeBuilt = true; searchActive = false;
+  show('home'); homeBuilt = true; homeDirty = false; searchActive = false;
+  // Returning from Settings may leave focus on a now-hidden field. Move it to
+  // the visible nav so Enter cannot trigger the hidden addon form.
+  const stale = document.activeElement;
+  if(stale && stale !== document.body && stale.closest && stale.closest('.hidden')){
+    const f = document.querySelector('#nav .f'); if(f) f.focus();
+  }
   const el = $('#home');
+  if(bgObserver) bgObserver.disconnect();
   el.innerHTML = '<div id="hero" class="hero2 hidden"></div><div id="rows"></div>';
   const R = $('#rows'), rows = [];
   renderContinueRow();
-  addons.forEach(a => (a.m.catalogs || []).forEach(c => { if(!needsExtra(c)) rows.push({ a, c }); }));
-  if(!rows.length){ R.className = 'pad'; R.innerHTML = '<div class="msg">No catalogs available. Open Addons and add one.</div>'; return; }
+  addons.forEach(a => {
+    if(!a || !a.m || !Array.isArray(a.m.catalogs)) return;
+    a.m.catalogs.forEach(c => { if(c && c.id && c.type && !needsExtra(c)) rows.push({ a, c }); });
+  });
+  if(!rows.length){
+    R.className = 'pad';
+    const msg = document.createElement('div'); msg.className = 'msg';
+    msg.textContent = 'No catalogs available. Open Addons and add one.';
+    R.appendChild(msg);
+    const f = R.querySelector('.f'); if(f) f.focus();
+    return;
+  }
   // HTTP/1.x allows few parallel connections per host and posters compete for
   // them, so catalogs load three at a time with one retry before a row is dropped.
   const queue = rows.slice(0, 14).map(({ a, c }) => {
@@ -492,19 +585,27 @@ async function home(){
       if(!document.body.contains(row.el)) continue;   // user already left this view
       try {
         const d = await getCat(a.b + '/catalog/' + c.type + '/' + enc(c.id) + '.json');
-        if(document.body.contains(row.el)) fill(row, d.metas || [], c.type);
+        if(document.body.contains(row.el)) fill(row, Array.isArray(d.metas) ? d.metas : [], c.type);
       } catch(e){ if(document.body.contains(row.el)) row.el.remove(); }
     }
   };
-  worker(); worker(); worker();
+  const jobs = [worker(), worker(), worker()];
+  Promise.all(jobs).then(() => {
+    // Do not leave a completely blank home when every catalog request failed.
+    if(R === $('#rows') && !R.querySelector('.row')) R.innerHTML = '<div class="msg">Could not load catalogs. Check the addon link or try again.</div>';
+  });
 }
 async function search(q){
   q = q.trim(); if(!q) return;
   show('home'); homeBuilt = true; searchActive = true;
   const el = $('#home');
+  if(bgObserver) bgObserver.disconnect();
   el.innerHTML = '<div id="rows" class="pad"><div class="msg">Searching for "' + esc(q) + '"...</div></div>';
   const R = $('#rows'), jobs = [];
-  addons.forEach(a => (a.m.catalogs || []).forEach(c => { if(searchable(c)) jobs.push({ a, c }); }));
+  addons.forEach(a => {
+    if(!a || !a.m || !Array.isArray(a.m.catalogs)) return;
+    a.m.catalogs.forEach(c => { if(c && c.id && c.type && searchable(c)) jobs.push({ a, c }); });
+  });
   if(!jobs.length){ R.innerHTML = '<div class="msg">None of your addons support search.</div>'; return; }
   let n = 0; R.innerHTML = '';
   const ae = document.activeElement; if(ae && ae.blur) ae.blur();
@@ -523,21 +624,27 @@ async function detail(type, id, stub){
   if(cur === 'home'){ const a = document.activeElement; if(a && $('#home').contains(a)) lastFocus = a; }
   show('detail');
   const g = viewGen;
-  const el = $('#detail'); el.innerHTML = '<div class="msg" style="padding-top:8rem">Loading...</div>';
+  const el = $('#detail'); if(bgObserver) bgObserver.disconnect(); el.innerHTML = '<div class="msg" style="padding-top:8rem">Loading...</div>';
   let m = stub || { id, name: id, type };
+  const stubMeta = m;
   const ads = addons.filter(a => supports(a.m, 'meta', type, id));
   if(ads.length){
     const got = await Promise.all(ads.map(a => j(a.b + '/meta/' + type + '/' + enc(id) + '.json', 20000).then(d => d && d.meta).catch(() => null)));
     if(g !== viewGen) return;
-    const found = got.filter(Boolean);
+    const found = got.filter(x => x && typeof x === 'object' && !Array.isArray(x));
     if(found.length){
-      m = Object.assign({}, ...found.slice().reverse());
+      // Merge into the stub rather than replacing it: a partial meta response
+      // must not discard the name/poster the catalog already gave us.
+      m = Object.assign({}, stubMeta);
+      found.slice().reverse().forEach(x => Object.keys(x).forEach(k => {
+        if(x[k] != null) m[k] = x[k];
+      }));
       const vs = [], seen = new Set();
-      found.forEach(f => (f.videos || []).forEach(v => { if(v && v.id && !seen.has(v.id)){ seen.add(v.id); vs.push(v); } }));
+      found.forEach(f => (Array.isArray(f.videos) ? f.videos : []).forEach(v => { if(v && v.id && !seen.has(v.id)){ seen.add(v.id); vs.push(v); } }));
       if(vs.length) m.videos = vs;
     }
   }
-  const vids = (m.videos || []).filter(v => v.id);
+  const vids = (Array.isArray(m.videos) ? m.videos : []).filter(v => v && v.id);
   const isSeries = type === 'series';
   const hasEps = isSeries && vids.length > 0;
   el.innerHTML = '<div class="dhero" id="dhero"><div class="hshade"></div><div class="hbody"><h1>' + esc(m.name) + '</h1><div class="meta">' + esc([metaLine(m), m.runtime].filter(Boolean).join('   |   ')) + '</div><div class="desc2">' + esc(m.description || '') + '</div>' +
@@ -545,7 +652,7 @@ async function detail(type, id, stub){
     (hasEps ? '<div class="dbody"><div id="seasons"></div><div id="eps"></div></div>' : '');
   setBg($('#dhero'), m.background || m.poster);
   const pb = $('#playbtn');
-  if(!pb) return;
+  if(!pb){ const f = document.querySelector('#nav .f'); if(f) f.focus(); return; }
   if(!hasEps){ window.currentMediaPoster=m.poster||''; pb.onclick = () => streams(type, id, m.name, {poster:m.poster||''}); pb.focus(); return; }
   const byOrder = (x, y) => (x.season || 0) - (y.season || 0) || (x.episode || 0) - (y.episode || 0);
   const real = vids.filter(v => (v.season || 0) > 0);
@@ -597,7 +704,12 @@ async function streams(type, id, title, opts){
   opts = opts || {};
   // Invalidate older lookups so a late response cannot replace the current title.
   const g = ++streamsGen;
-  lastStream = { type, id, title,
+  const prev = lastStream;
+  // Re-opening sources for the title already playing should keep its position.
+  // A new episode/title must not inherit the old video's currentTime.
+  const samePlay = !!(prev && prev.type === type && String(prev.id) === String(id));
+  userSourceChoice = false;
+  lastStream = { type, id, title, started: false, samePlay,
     poster: opts.poster || window.currentMediaPoster || '',
     nextEpisode: opts.nextEpisode || null,
     epList: opts.epList || null, epIndex: opts.epIndex == null ? null : opts.epIndex,
@@ -610,7 +722,11 @@ async function streams(type, id, title, opts){
   const wasPlaying = !$('#player').classList.contains('hidden');
   const as = addons.filter(a => supports(a.m, 'stream', type, id));
   currentSources = []; currentSrcIdx = -1;
-  if(!as.length){ L.innerHTML = '<div class="msg">None of your addons provide streams for this title. Add a stream addon in Addons.</div>'; return; }
+  if(!as.length){
+    L.innerHTML = '<div class="msg">None of your addons provide streams for this title. Add a stream addon in Addons.</div>';
+    const c = $('#st-close'); if(c) c.focus();
+    return;
+  }
 
   // Keep sources in arrival order so their indexes never change while other
   // addons are still responding. Start the first browser-ready source as soon
@@ -621,7 +737,7 @@ async function streams(type, id, title, opts){
     if(g !== streamsGen) return;
     currentSources = found.slice();
     renderSourceList(L, currentSources, title);
-    if(!autoStarted){
+    if(!autoStarted && !userSourceChoice){
       const first = currentSources.findIndex(playable);
       if(first >= 0){
         autoStarted = true;
@@ -633,7 +749,7 @@ async function streams(type, id, title, opts){
   await Promise.all(as.map(async a => {
     try {
       const d = await j(a.b + '/stream/' + type + '/' + enc(id) + '.json', 25000);
-      (d.streams || []).forEach(s => {
+      (Array.isArray(d.streams) ? d.streams : []).forEach(s => {
         if(s && (s.url || s.externalUrl)) found.push({ s, addon:a });
       });
     } catch(e) {}
@@ -642,12 +758,16 @@ async function streams(type, id, title, opts){
   if(g !== streamsGen) return;
   paint();
   if(autoStarted) return;
-  if(!found.length){ L.innerHTML = '<div class="msg">No sources found for this title.</div>'; return; }
+  if(!found.length){
+    L.innerHTML = '<div class="msg">No sources found for this title.</div>';
+    const c = $('#st-close'); if(c) c.focus();
+    return;
+  }
   // A user may have selected a source manually while results were loading.
   // Do not replace that playback when the remaining addon responses arrive.
   if(!wasPlaying && !$('#player').classList.contains('hidden')) return;
   const first = currentSources.findIndex(playable);
-  if(first < 0){ const f = L.querySelector('.f'); if(f) f.focus(); }
+  if(first < 0){ const f = L.querySelector('.f') || $('#st-close'); if(f) f.focus(); }
 }
 // Rebuilds the source list from scratch (sources keep arriving after the
 // first one starts playing), preserving the D-pad position by index.
@@ -657,6 +777,9 @@ function renderSourceList(L, list, title){
   L.innerHTML = '';
   list.forEach((x, i) => addStream(L, x.addon, x.s, title, i));
   if(keep >= 0 && L.children[keep]) L.children[keep].focus();
+  // With no playable rows the fixed corner close button is the only D-pad
+  // target. It is position:fixed, so it is not an offsetParent.
+  if(!L.querySelector('.f') && !$('#streams').classList.contains('hidden')){ const c = $('#st-close'); if(c) c.focus(); }
 }
 function playSource(i, keepPos){
   const x = currentSources[i];
@@ -664,29 +787,32 @@ function playSource(i, keepPos){
   currentSrcIdx = i;
   // When switching sources mid-playback, continue from the current position.
   const v = $('#v');
-  if(keepPos && !$('#player').classList.contains('hidden') && isFinite(v.currentTime) && v.currentTime > 1){
+  if(keepPos && lastStream.samePlay && !v.ended && !$('#player').classList.contains('hidden') && isFinite(v.currentTime) && v.currentTime > 1){
     lastStream.resumeAt = v.currentTime;
   }
   play(x.s, lastStream.title);
 }
 function openSources(){
+  cancelNextAutoplay();
   const L = $('#st-list');
   if(!L.children.length) L.innerHTML = '<div class="msg">No sources loaded for this title.</div>';
   $('#streams').classList.remove('hidden');
-  const f = L.querySelector('.f'); if(f) f.focus();
+  const f = L.querySelector('.f'); if(f) f.focus(); else { const c = $('#st-close'); if(c) c.focus(); }
 }
 function closeSources(){
   // Only cancel pending lookups when nothing is playing; during playback
   // the remaining addons may still add sources to the list.
   if($('#player').classList.contains('hidden')) streamsGen++;
+  else userSourceChoice = true;   // closing the list must cancel a pending auto-start
   $('#streams').classList.add('hidden');
   if(!$('#player').classList.contains('hidden')){ showCtrls(true); return; }
-  const f = document.querySelector(cur === 'detail' ? '#playbtn' : '#hplay'); if(f) f.focus();
+  const f = document.querySelector(cur === 'detail' ? '#playbtn' : '#hplay') || document.querySelector('.view:not(.hidden) .f') || document.querySelector('#nav .f');
+  if(f) f.focus();
 }
 
 function addStream(L, a, s, title, i){
   const d = document.createElement('div');
-  const name = s.name || a.m.name || 'Stream';
+  const name = s.name || (a.m && a.m.name) || 'Stream';
   const info = String(s.title || s.description || '').replace(/\n/g, '  |  ');
   let note = '';
   if(s.url){
@@ -694,23 +820,36 @@ function addStream(L, a, s, title, i){
     d.setAttribute('aria-label', name + (info ? ', ' + info : ''));
     if(i === currentSrcIdx) note = 'Currently playing';
     else if(s.behaviorHints && s.behaviorHints.notWebReady) note = 'May not play in a TV browser';
-    d.onclick = () => { $('#streams').classList.add('hidden'); playSource(i, true); };
+    d.onclick = () => { userSourceChoice = true; $('#streams').classList.add('hidden'); playSource(i, true); };
   }
   else if(s.externalUrl){
     d.className = 'f st'; d.tabIndex = 0; d.setAttribute('role','button');
     d.setAttribute('aria-label', name + ', opens in browser');
     note = 'Opens in browser';
-    d.onclick = () => { try { window.open(s.externalUrl, '_blank', 'noopener'); } catch(e){} };
+    d.onclick = () => { userSourceChoice = true; try { window.open(s.externalUrl, '_blank', 'noopener'); } catch(e){} };
   }
   else { d.className = 'st off'; note = s.infoHash ? 'Torrent streams cannot play in a browser' : 'Not supported here'; }
   d.innerHTML = esc(name) + (info ? '<small>' + esc(info) + '</small>' : '') + (note ? '<small>' + esc(note) + '</small>' : '');
   L.appendChild(d);
   const act = document.activeElement;
-  if(d.tabIndex === 0 && !$('#streams').classList.contains('hidden') && (!act || !$('#streams').contains(act))) d.focus();
+  if(d.tabIndex === 0 && !$('#streams').classList.contains('hidden') && (!act || !L.contains(act))) d.focus();
 }
 
 // ---------- player ----------
-let hls = null, ctrlT;
+let hls = null, ctrlT, hlsPathActive = false, nativeFallbackTried = true, resumeSeekFn = null;
+// Keep at most one pending resume seek. Otherwise a source that failed before
+// metadata could leave a listener behind and seek the next source to the old
+// title's position.
+function seekWhenReady(v, t){
+  if(resumeSeekFn){ v.removeEventListener('loadedmetadata', resumeSeekFn); resumeSeekFn = null; }
+  if(!(t > 0)) return;
+  resumeSeekFn = () => {
+    v.removeEventListener('loadedmetadata', resumeSeekFn);
+    resumeSeekFn = null;
+    try { if(!isFinite(v.duration) || t < v.duration - 3) v.currentTime = t; } catch(e){}
+  };
+  v.addEventListener('loadedmetadata', resumeSeekFn);
+}
 const fmt = t => { t = Math.max(0, Math.floor(t || 0)); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), x = String(t % 60).padStart(2, '0'); return h ? h + ':' + String(m).padStart(2, '0') + ':' + x : m + ':' + x; };
 const svg = (p, extra) => '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">' + p + (extra || '') + '</svg>';
 const rew = 'M12 5V1L7 6l5 5V7c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z';
@@ -743,8 +882,11 @@ const isFullscreen = () => !!(document.fullscreenElement || document.webkitFulls
 function updateFullscreenBtn(){
   const b = $('#cfs');
   if(!b) return;
-  const on = isFullscreen();
-  b.innerHTML = (on ? IC.exitfs : IC.fs) + '<span>Fullscreen</span>';
+  const on = isFullscreen(), state = on ? 'exitfs' : 'fs';
+  if(b.dataset.icon !== state){
+    b.innerHTML = (on ? IC.exitfs : IC.fs) + '<span>Fullscreen</span>';
+    b.dataset.icon = state;
+  }
   b.setAttribute('aria-label', on ? 'Exit fullscreen' : 'Enter fullscreen');
 }
 function toggleFullscreen(){
@@ -774,9 +916,11 @@ function updateCtrls(){
   $('#fillbar').style.width = pct + '%';
   $('#bar').setAttribute('aria-valuenow', Math.round(pct));
   $('#bar').setAttribute('aria-valuetext', d ? fmt(v.currentTime) + ' of ' + fmt(d) : 'Live');
-  $('#cplay').innerHTML = v.paused ? IC.play : IC.pause;
+  const ps = v.paused ? 'play' : 'pause';
+  if($('#cplay').dataset.icon !== ps){ $('#cplay').innerHTML = IC[ps]; $('#cplay').dataset.icon = ps; }
   $('#cplay').setAttribute('aria-label', v.paused ? 'Play' : 'Pause');
-  $('#cmute').innerHTML = v.muted ? IC.mute : IC.vol;
+  const ms = v.muted ? 'mute' : 'vol';
+  if($('#cmute').dataset.icon !== ms){ $('#cmute').innerHTML = IC[ms]; $('#cmute').dataset.icon = ms; }
   $('#cmute').setAttribute('aria-label', v.muted ? 'Unmute' : 'Mute');
 }
 function showCtrls(focusPlay){
@@ -786,15 +930,16 @@ function showCtrls(focusPlay){
 }
 function hideCtrls(){
   if(!$('#tracks').classList.contains('hidden')) return;
+  if(!$('#nextOverlay').classList.contains('hidden')) return;
+  // Remote-only: move focus off an about-to-be-hidden button before hiding,
+  // otherwise the focus ring would sit on an invisible control.
   const a = document.activeElement;
-  // Remote-only: the focus ring is the cursor, so never hide the controls
-  // out from under a focused button.
-  if(a && a.closest && a.closest('#ctrls')) return;
+  if(a && a.closest && a.closest('#ctrls')) $('#player').focus();
   $('#ctrls').classList.add('off');
 }
 const ctrlsOn = () => !$('#ctrls').classList.contains('off');
-function toggle(){ const v = $('#v'); if(v.paused) v.play().catch(() => {}); else v.pause(); }
-function seek(dt){ const v = $('#v'); v.currentTime = Math.max(0, v.currentTime + dt); }
+function toggle(){ cancelNextAutoplay(); const v = $('#v'); if(v.paused) startPlayback(v); else v.pause(); }
+function seek(dt){ cancelNextAutoplay(); const v = $('#v'); v.currentTime = Math.max(0, v.currentTime + dt); }
 // Match a saved preference against a track list: exact code first, then
 // prefix, then name. A plain substring test would match "Slovenian" for "en".
 function matchPref(tracks, pref, langOf, nameOf){
@@ -844,60 +989,97 @@ function startPlayback(v){
   const fail = err => {
     if(err && err.name === 'AbortError') return;   // interrupted by pause/load
     if($('#player').classList.contains('hidden')) return;
-    showCtrls(); toast('Press Play to start');
+    if(err && (err.name === 'NotSupportedError' || err.name === 'TypeError' || err.name === 'NotReadableError')){
+      // A source the decoder cannot open should fail over, not sit behind a
+      // "Press Play" prompt forever (MKV, DASH, AC-3/DTS, bad HLS...).
+      handleStreamFailure();
+      return;
+    }
+    showCtrls(true); toast('Press Play to start');
   };
   let p;
   try { p = v.play(); } catch(e){ fail(e); return; }
   if(p && p.catch) p.catch(fail);
 }
 function play(s, title){
+  s = s || {};
   const v = $('#v');
   $('#player').classList.remove('hidden'); $('#streams').classList.add('hidden');
   $('#ptitle').textContent = title;
-  failHandled = false; hlsRetried = false;
+  cancelNextAutoplay();
+  failHandled = false; hlsRetried = false; hlsPathActive = false; nativeFallbackTried = true;
   const ae = document.activeElement; if(ae && ae.closest && ae.closest('#streams')) ae.blur();
   resetSubs(s);
-  if(hls){ hls.destroy(); hls = null; }
+  if(hls){ const old = hls; hls = null; try { old.destroy(); } catch(e){} }
   const u = s.url;
   const resume = lastStream.resumeAt != null ? lastStream.resumeAt : resumePosition(lastStream.type,lastStream.id);
   lastStream.resumeAt = null;
   // Never leave the previous source playing under a new title.
   if(!u){ handleStreamFailure(); return; }
+  lastStream.started = true;
   let hlsPath = false;
-  if(/\.m3u8/i.test(u) && window.Hls && Hls.isSupported()){
-    hlsPath = true;
-    // Keep buffers small (Coolita guide: ~200MB for the whole app) and never
-    // pull a variant bigger than the 720p UI can show.
-    hls = new Hls({ maxBufferLength:30, maxMaxBufferLength:60, maxBufferSize:30*1000*1000, backBufferLength:20, capLevelToPlayerSize:true });
-    const inst = hls;
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      applyPreferredTracks();
-      // Ask for playback only once the manifest is parsed. Calling play()
-      // straight after attachMedia() is what makes HLS autoplay stall.
-      if(inst === hls) startPlayback(v);
-    });
-    hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => { applyPreferredTracks(); });
-    hls.on(Hls.Events.ERROR, (evt, d) => {
-      if(inst !== hls || !d || !d.fatal) return;
-      if(!hlsRetried){
-        hlsRetried = true;
-        if(d.type === Hls.ErrorTypes.NETWORK_ERROR){ try { hls.startLoad(); } catch(e){} return; }
-        if(d.type === Hls.ErrorTypes.MEDIA_ERROR){ try { hls.recoverMediaError(); } catch(e){} return; }
-      }
-      handleStreamFailure();
-    });
-    hls.loadSource(u); hls.attachMedia(v);
-  } else v.src = u;
+  try {
+    if(/\.m3u8/i.test(u) && window.Hls && typeof Hls.isSupported === 'function' && Hls.isSupported()){
+      hlsPath = true;
+      // Keep buffers small (Coolita guide: ~200MB for the whole app) and never
+      // pull a variant bigger than the 720p UI can show.
+      hls = new Hls({ maxBufferLength:30, maxMaxBufferLength:60, maxBufferSize:30*1000*1000, backBufferLength:20, capLevelToPlayerSize:true });
+      const inst = hls;
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        if(inst !== hls) return;
+        applyPreferredTracks();
+        // Ask for playback only once the manifest is parsed. Calling play()
+        // straight after attachMedia() is what makes HLS autoplay stall.
+        startPlayback(v);
+      });
+      hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => { if(inst === hls) applyPreferredTracks(); });
+      hls.on(Hls.Events.ERROR, (evt, d) => {
+        if(inst !== hls || !d || !d.fatal) return;
+        if(!hlsRetried){
+          hlsRetried = true;
+          if(d.type === Hls.ErrorTypes.NETWORK_ERROR){ try { hls.startLoad(); } catch(e){} return; }
+          if(d.type === Hls.ErrorTypes.MEDIA_ERROR){ try { hls.recoverMediaError(); } catch(e){} return; }
+        }
+        handleStreamFailure();
+      });
+      hls.loadSource(u); hls.attachMedia(v);
+    } else v.src = u;
+  } catch(e){
+    if(hls){ const old = hls; hls = null; try { old.destroy(); } catch(x){} }
+    hlsPath = false; v.src = u;
+  }
+  if(hlsPath){ hlsPathActive = true; nativeFallbackTried = false; }
+  else nativeFallbackTried = true;
   v.addEventListener('loadedmetadata', applyPreferredTracks, {once:true});
-  if(resume > 0){ const seekResume=()=>{try{if(resume < v.duration-3)v.currentTime=resume;}catch(e){} v.removeEventListener('loadedmetadata',seekResume);}; v.addEventListener('loadedmetadata',seekResume); }
+  seekWhenReady(v, resume);
   if(!hlsPath) startPlayback(v);
-  updateFullscreenBtn();
-  showCtrls();
+  if(!$('#player').classList.contains('hidden')){
+    updateFullscreenBtn();
+    // Put the D-pad on Play after opening, then let the controls auto-hide.
+    showCtrls(true);
+  }
 }
 // Called when the current source cannot be decoded or fetched: try the next
 // available source before giving up.
 function handleStreamFailure(){
   if(failHandled) return;
+  // hls.js can fail where the TV's native HLS stack succeeds. Try the same
+  // URL natively once before burning the next source.
+  if(hlsPathActive && !nativeFallbackTried){
+    const curS = currentSources[currentSrcIdx];
+    const u = curS && curS.s && curS.s.url;
+    if(u){
+      nativeFallbackTried = true; hlsPathActive = false;
+      const v = $('#v'), at = v.currentTime;
+      if(hls){ const old = hls; hls = null; try { old.destroy(); } catch(e){} }
+      toast('Trying native HLS…');
+      // Resume where hls.js had reached, but keep the original resume seek if
+      // the manifest failed before any metadata arrived.
+      if(at > 1) seekWhenReady(v, at);
+      v.src = u; startPlayback(v);
+      return;
+    }
+  }
   failHandled = true;
   const next = currentSources.findIndex((x, i) => i > currentSrcIdx && x && x.s && x.s.url && !(x.s.behaviorHints && x.s.behaviorHints.notWebReady));
   if(next >= 0){
@@ -913,22 +1095,28 @@ function handleStreamFailure(){
 // close (Back / the close button) goes straight back to the library.
 function closePlayer(fromFailure){
   streamsGen++;   // any lookup still in flight must not reopen the player
-  saveProgress(); clearTimeout(nextTimer); $('#nextOverlay').classList.add('hidden');
+  saveProgress(); cancelNextAutoplay();
+  if(lastStream) lastStream.started = false;
   failHandled = true;
-  const v = $('#v'); v.pause(); v.removeAttribute('src'); v.load();
-  if(hls){ hls.destroy(); hls = null; }
+  clearTimeout(ctrlT); ctrlT = null;
+  const v = $('#v');
+  if(resumeSeekFn){ v.removeEventListener('loadedmetadata', resumeSeekFn); resumeSeekFn = null; }
+  if(hls){ const old = hls; hls = null; try { old.destroy(); } catch(e){} }
+  v.pause(); v.removeAttribute('src'); v.load();
   if(isFullscreen()){
     const ex = document.exitFullscreen || document.webkitExitFullscreen;
     if(ex){ try { const r = ex.call(document); if(r && r.catch) r.catch(() => {}); } catch(e){} }
   }
   closeMenu();
+  clearTimeout(ctrlT); ctrlT = null;
   hideCtrls();
   $('#player').classList.add('hidden');
   if(fromFailure && currentSources.length){
     $('#streams').classList.remove('hidden');
-    const f = document.querySelector('#st-list .f'); if(f) f.focus();
+    const f = document.querySelector('#st-list .f') || $('#st-close'); if(f) f.focus();
   } else {
-    const f = document.querySelector(cur === 'detail' ? '#playbtn' : '#hplay'); if(f) f.focus();
+    const f = document.querySelector(cur === 'detail' ? '#playbtn' : '#hplay') || document.querySelector('.view:not(.hidden) .f') || document.querySelector('#nav .f');
+    if(f) f.focus();
   }
 }
 $('#v').addEventListener('error', () => handleStreamFailure());
@@ -937,15 +1125,21 @@ let lastSavedAt = 0;
 $('#v').addEventListener('timeupdate', () => { if(Date.now()-lastSavedAt>3000){ saveProgress(); lastSavedAt=Date.now(); } });
 $('#v').addEventListener('timeupdate', () => applySubtitleDelay(false));
 $('#v').addEventListener('ended', () => {
-  saveProgress(); showCtrls(true);
+  saveProgress();
+  if($('#player').classList.contains('hidden')) return;
+  // A menu or source list may be open over a still-playing video. Do not steal
+  // focus or autoplay the next episode behind that overlay; leave the user in
+  // control of the list they opened.
+  if(!$('#streams').classList.contains('hidden') || !$('#tracks').classList.contains('hidden')) return;
+  showCtrls(true);
   const nxt=lastStream && lastStream.nextEpisode;
   if(nxt){ $('#nextTitle').textContent='Up next: '+nxt.title; $('#nextOverlay').classList.remove('hidden'); clearTimeout(nextTimer); nextTimer=setTimeout(playNextEpisode,8000); $('#nextPlay').focus(); }
 });
 const epAt = (list, i, seriesName, poster) => (list && i >= 0 && i < list.length) ? epMeta(list[i], seriesName, poster) : null;
 function playNextEpisode(){
   const nxt = lastStream && lastStream.nextEpisode; if(!nxt) return;
-  clearTimeout(nextTimer); $('#nextOverlay').classList.add('hidden');
-  pendingResume = 0;
+  cancelNextAutoplay();
+  pendingResume = null;   // let the saved position for this episode decide
   const L = lastStream.epList, ix = lastStream.epIndex;
   const ni = (ix == null) ? null : ix + 1;
   streams(nxt.type, nxt.id, nxt.title, {
@@ -955,7 +1149,7 @@ function playNextEpisode(){
   });
 }
 $('#nextPlay').onclick=playNextEpisode;
-$('#nextCancel').onclick=()=>{clearTimeout(nextTimer);$('#nextOverlay').classList.add('hidden');showCtrls();};
+$('#nextCancel').onclick=()=>{cancelNextAutoplay();showCtrls(true);};
 // Subtitle timing: cues parsed after the button press (or after a source
 // change) must be offset too, so the delay is re-applied whenever cues change.
 const cueBase = new WeakMap(), trackSeen = new WeakMap();
@@ -993,17 +1187,24 @@ $('#cback').onclick = () => { seek(-10); showCtrls(); };
 $('#cfwd').onclick = () => { seek(10); showCtrls(); };
 $('#cplay').onclick = () => { toggle(); showCtrls(); };
 $('#bar').onclick = e => {
-  if(!e.detail){ toggle(); showCtrls(); return; }
+  if(!e.detail){ seek(10); showCtrls(); return; }
   const v = $('#v'), r = e.currentTarget.getBoundingClientRect();
   if(isFinite(v.duration)) v.currentTime = (e.clientX - r.left) / r.width * v.duration;
   showCtrls();
 };
-$('#player').addEventListener('mousemove', () => showCtrls());
+let ctrlPokeAt = 0;
+$('#player').addEventListener('mousemove', () => {
+  const now = Date.now();
+  if(now - ctrlPokeAt < 200) return;
+  ctrlPokeAt = now;
+  if(!ctrlsOn()) showCtrls();
+  else { clearTimeout(ctrlT); ctrlT = setTimeout(hideCtrls, 4500); }
+});
 $('#v').addEventListener('click', () => { toggle(); showCtrls(); });
 
 // ---------- subtitles and audio ----------
-let subBlobUrl = null, lastStream = {}, subList = [], subPending = 0, menuKind = null, menuBtn = null, curSub = null;
-let currentSources = [], currentSrcIdx = -1, failHandled = true, hlsRetried = false, streamsGen = 0;
+let subBlobUrl = null, lastStream = {}, subList = [], subPending = 0, menuKind = null, menuBtn = null, curSub = null, subsGen = 0;
+let currentSources = [], currentSrcIdx = -1, failHandled = true, hlsRetried = false, streamsGen = 0, userSourceChoice = false;
 const LANGS = {en:'English',eng:'English',hi:'Hindi',hin:'Hindi',ml:'Malayalam',mal:'Malayalam',ta:'Tamil',tam:'Tamil',te:'Telugu',tel:'Telugu',kn:'Kannada',kan:'Kannada',bn:'Bengali',ben:'Bengali',mr:'Marathi',mar:'Marathi',gu:'Gujarati',guj:'Gujarati',pa:'Punjabi',pan:'Punjabi',ur:'Urdu',urd:'Urdu',ar:'Arabic',ara:'Arabic',es:'Spanish',spa:'Spanish',fr:'French',fre:'French',fra:'French',de:'German',ger:'German',deu:'German',it:'Italian',ita:'Italian',pt:'Portuguese',por:'Portuguese',pob:'Portuguese (Brazil)',pb:'Portuguese (Brazil)',ru:'Russian',rus:'Russian',ja:'Japanese',jpn:'Japanese',ko:'Korean',kor:'Korean',zh:'Chinese',chi:'Chinese',zho:'Chinese',tr:'Turkish',tur:'Turkish',nl:'Dutch',dut:'Dutch',nld:'Dutch',id:'Indonesian',ind:'Indonesian',ms:'Malay',may:'Malay',msa:'Malay',th:'Thai',tha:'Thai',vi:'Vietnamese',vie:'Vietnamese',fa:'Persian',per:'Persian',fas:'Persian',he:'Hebrew',heb:'Hebrew',el:'Greek',ell:'Greek',gre:'Greek',pl:'Polish',pol:'Polish',sv:'Swedish',swe:'Swedish'};
 // Intl.DisplayNames needs Chrome 81+; the table covers older TV engines.
 const langName = c => {
@@ -1016,6 +1217,8 @@ const langName = c => {
 const toVtt = t => { t = t.replace(/^\uFEFF/, '').replace(/\r/g, ''); return /^WEBVTT/.test(t) ? t : 'WEBVTT\n\n' + t.replace(/(\d+:\d+:\d+),(\d+)/g, '$1.$2'); };
 function dropSubBlob(){ if(subBlobUrl){ try { URL.revokeObjectURL(subBlobUrl); } catch(e){} subBlobUrl = null; } }
 function resetSubs(s){
+  s = s || {};
+  const gen = ++subsGen;
   document.querySelectorAll('#v track').forEach(t => t.remove()); dropSubBlob();
   subList = []; subPending = 0; curSub = null; closeMenu();
   const count = {};
@@ -1025,36 +1228,47 @@ function resetSubs(s){
     const n = count[code] = (count[code] || 0) + 1;
     subList.push({ kind: 'ext', url: x.url, label: langName(code) + (n > 1 ? ' ' + n : ''), from });
   };
-  (s.subtitles || []).forEach(x => add(x, 'stream'));
+  (Array.isArray(s.subtitles) ? s.subtitles : []).forEach(x => add(x, 'stream'));
   const { type, id } = lastStream;
   if(type && id) addons.filter(a => supports(a.m, 'subtitles', type, id)).forEach(a => {
     subPending++;
     j(a.b + '/subtitles/' + type + '/' + enc(id) + '.json')
-      .then(d => (d.subtitles || []).slice(0, 60).forEach(x => add(x, a.m.name)))
+      .then(d => { if(gen !== subsGen) return; (Array.isArray(d.subtitles) ? d.subtitles : []).slice(0, 60).forEach(x => add(x, (a.m && a.m.name) || 'addon')); })
       .catch(() => {})
-      .finally(() => { subPending--; applyPreferredTracks(); if(menuKind === 'subs') renderMenu(); });
+      .finally(() => {
+        if(gen !== subsGen) return;   // a newer title owns subPending now
+        subPending = Math.max(0, subPending - 1);
+        applyPreferredTracks();
+        if(menuKind === 'subs') renderMenu();
+      });
   });
 }
 async function pickSub(it){
+  const gen = subsGen;
   const v = $('#v');
   document.querySelectorAll('#v track').forEach(t => t.remove()); dropSubBlob();
   Array.from(v.textTracks).forEach(t => t.mode = 'disabled');
   if(hls) hls.subtitleTrack = -1;
   curSub = it;
   if(!it) return;
-  if(it.kind === 'hls'){ hls.subtitleTrack = it.i; return; }
+  if(it.kind === 'hls'){ if(hls) hls.subtitleTrack = it.i; return; }
   if(it.kind === 'native'){ it.t.mode = 'showing'; return; }
   try {
     const txt = await fetchText(it.url);
+    if(gen !== subsGen || curSub !== it) return;
     const blob = new Blob([toVtt(txt)], { type: 'text/vtt' });
     const tr = document.createElement('track');
     tr.kind = 'subtitles'; tr.label = it.label; subBlobUrl = URL.createObjectURL(blob); tr.src = subBlobUrl; tr.default = true;
     v.appendChild(tr); tr.track.__ext = true; tr.track.mode = 'showing';
     tr.addEventListener('load', () => applySubtitleDelay(true));
     applySubtitleDelay(true);
-  } catch(e){ curSub = null; toast('Could not load that subtitle. Try another one.'); }
+  } catch(e){
+    if(gen !== subsGen || curSub !== it) return;
+    curSub = null; toast('Could not load that subtitle. Try another one.');
+  }
 }
 function openMenu(kind, btn){
+  cancelNextAutoplay();
   menuKind = kind; menuBtn = btn;
   $('#tracks').classList.remove('hidden'); clearTimeout(ctrlT);
   renderMenu();
@@ -1109,8 +1323,11 @@ $('#tracks').addEventListener('click', e => { if(e.target.id === 'tracks') close
 
 // ---------- settings ----------
 function settings(){
+  if(cur === 'home'){ const a = document.activeElement; if(a && $('#home').contains(a)) lastFocus = a; }
   show('settings');
-  const urls = store.get('urls', PRESET);
+  const settingsGen = viewGen;
+  const stored = store.get('urls', null);
+  const urls = Array.isArray(stored) ? stored.filter(u => typeof u === 'string' && u) : PRESET.slice();
   const el = $('#settings');
   el.innerHTML = '<h2>Install an addon</h2><p>Paste a manifest link (it ends in manifest.json). Typing is easier from a phone browser: open this page with ?addon=MANIFEST_URL at the end and it installs itself.</p>' +
     '<input id="au" class="f" placeholder="https://example.com/manifest.json" tabindex="0" aria-label="Addon manifest link"><span class="f btn w" id="aadd" tabindex="0" role="button">Install</span>' +
@@ -1122,20 +1339,28 @@ function settings(){
     const a = addons.find(x => x.u === u);
     const d = document.createElement('div'); d.className = 'f row2'; d.tabIndex = 0;
     d.setAttribute('role','button');
-    d.innerHTML = esc(a ? a.m.name : 'Unreachable') + '<small style="display:block;color:var(--muted)">' + esc(u) + ' (press OK to remove)</small>';
+    d.innerHTML = esc(a && a.m ? a.m.name : 'Unreachable') + '<small style="display:block;color:var(--muted)">' + esc(u) + ' (press OK to remove)</small>';
     d.onclick = async () => {
       // Two-step removal so an accidental press does not uninstall an addon.
       if(pendingRemove !== i){
         pendingRemove = i;
-        d.setAttribute('aria-label', 'Press OK again to remove ' + (a ? a.m.name : u));
+        d.setAttribute('aria-label', 'Press OK again to remove ' + (a && a.m ? a.m.name : u));
         toast('Press OK again to remove this addon');
         clearTimeout(removeT);
         removeT = setTimeout(() => { pendingRemove = -1; d.removeAttribute('aria-label'); }, 4000);
         return;
       }
       clearTimeout(removeT); pendingRemove = -1;
-      const n = store.get('urls', []); n.splice(i, 1); store.set('urls', n);
-      await loadAddons(); settings(); toast('Addon removed');
+      // The row stays visible until the addon list reloads; disable it so a
+      // repeated OK cannot remove the next addon by the old index.
+      d.onclick = null; d.classList.add('off'); d.setAttribute('aria-disabled', 'true');
+      const current = (Array.isArray(store.get('urls', null)) ? store.get('urls', null) : PRESET.slice()).filter(u => typeof u === 'string' && u);
+      current.splice(i, 1); store.set('urls', current);
+      homeDirty = true;
+      await loadAddons();
+      homeDirty = true;
+      if(cur === 'settings' && viewGen === settingsGen) settings();
+      toast('Addon removed');
     };
     list.appendChild(d);
   });
@@ -1143,8 +1368,15 @@ function settings(){
     const val = $('#au').value.trim(); if(!val) return;
     try {
       const b = base(val); const m = await j(b + '/manifest.json', 12000);
-      const n = store.get('urls', []); n.push(b + '/manifest.json'); store.set('urls', n);
-      await loadAddons(); settings(); toast('Installed ' + (m.name || 'addon'));
+      if(!m || typeof m !== 'object' || Array.isArray(m) || (m.resources != null && !Array.isArray(m.resources)) || (m.catalogs != null && !Array.isArray(m.catalogs))) throw new Error('bad manifest');
+      const current = (Array.isArray(store.get('urls', null)) ? store.get('urls', null) : PRESET.slice()).filter(u => typeof u === 'string' && u);
+      if(current.map(base).includes(b)){ toast('That addon is already installed'); return; }
+      current.push(b + '/manifest.json'); store.set('urls', current);
+      homeDirty = true;
+      await loadAddons();
+      homeDirty = true;
+      if(cur === 'settings' && viewGen === settingsGen) settings();
+      toast('Installed ' + (m.name || 'addon'));
     } catch(e){ toast('Could not load that addon. Check the link.'); }
   };
   $('#diag').onclick = renderDiag; renderDiag();
@@ -1159,9 +1391,47 @@ function scope(){
   if(!$('#player').classList.contains('hidden')) return '#ctrls .f';
   return '#nav .f, .view:not(.hidden) .f';
 }
+function focusablesFor(act, dir){
+  const nav = () => Array.from(document.querySelectorAll('#nav .f'));
+  const hero = () => Array.from(document.querySelectorAll('#hero .f, #dhero .f'));
+  if(!act) return Array.from(document.querySelectorAll(scope()));
+  const row = act.closest ? act.closest('.row') : null;
+  if(row){
+    const rows = [row];
+    if(dir === 'up' && row.previousElementSibling) rows.push(row.previousElementSibling);
+    if(dir === 'down' && row.nextElementSibling) rows.push(row.nextElementSibling);
+    const out = [];
+    rows.forEach(r => out.push(...r.querySelectorAll('.f')));
+    if(dir === 'up' || dir === 'down') out.push(...nav(), ...hero());
+    return out;
+  }
+  if(act.closest && act.closest('#eps')){
+    const eps = Array.from(document.querySelectorAll('#eps .f'));
+    const i = eps.indexOf(act);
+    const near = i >= 0 ? eps.slice(Math.max(0, i - 12), i + 13) : eps.slice(0, 25);
+    return [...nav(), ...document.querySelectorAll('#playbtn, #seasons .f'), ...near];
+  }
+  if(act.closest && act.closest('#seasons')){
+    return [...nav(), ...document.querySelectorAll('#playbtn, #seasons .f'), ...Array.from(document.querySelectorAll('#eps .f')).slice(0, 12)];
+  }
+  if(act.closest && act.closest('#dhero')){
+    return [...nav(), ...hero(), ...document.querySelectorAll('#seasons .f'), ...Array.from(document.querySelectorAll('#eps .f')).slice(0, 12)];
+  }
+  if(act.closest && (act.closest('#hero') || act.closest('#nav'))){
+    const out = [...nav(), ...hero()];
+    if(cur === 'settings') out.push(...document.querySelectorAll('#settings .f'));
+    else if(cur === 'detail') out.push(...document.querySelectorAll('#seasons .f'), ...Array.from(document.querySelectorAll('#eps .f')).slice(0, 12));
+    else Array.from(document.querySelectorAll('.view:not(.hidden) .row')).slice(0, 2).forEach(r => out.push(...r.querySelectorAll('.f')));
+    return out;
+  }
+  return Array.from(document.querySelectorAll(scope()));
+}
 function move(dir){
   const cur = document.activeElement;
-  const els = Array.from(document.querySelectorAll(scope())).filter(e => e.offsetParent);
+  // Measure only the active row plus its neighbours (or a window around the
+  // active episode) instead of all 400+ focusable cards on every key press.
+  let els = Array.from(new Set(focusablesFor(cur, dir))).filter(e => e.getClientRects().length);
+  if(!cur || !els.includes(cur)) els = Array.from(document.querySelectorAll(scope())).filter(e => e.getClientRects().length);
   if(!cur || !els.includes(cur)){ if(els[0]) els[0].focus(); return; }
   const r = cur.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
   let best = null, bs = 1e9;
@@ -1174,12 +1444,28 @@ function move(dir){
     const s = (horiz ? Math.abs(dx) : Math.abs(dy)) + (horiz ? Math.abs(dy) : Math.abs(dx)) * 3;
     if(s < bs){ bs = s; best = e; }
   });
-  if(best){ best.focus(); if(best.closest('#nav, #hero, .dhero')) window.scrollTo(0, 0); else best.scrollIntoView({ block: 'center', inline: 'center' }); }
+  if(best){
+    best.focus();
+    if(best.closest('#nav, #hero, .dhero')) window.scrollTo(0, 0);
+    else best.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }
 }
 function goBack(){
   if(!$('#streams').classList.contains('hidden')){ closeSources(); return; }
   if(searchActive && cur === 'home'){ searchActive = false; home(); return; }
-  if(cur !== 'home'){ if(homeBuilt){ show('home'); if(lastFocus && document.body.contains(lastFocus)){ lastFocus.focus(); lastFocus.scrollIntoView({ block: 'center' }); } } else home(); return; }
+  if(cur !== 'home'){
+    if(cur === 'settings' && homeDirty){ home(); return; }
+    if(homeBuilt){
+      show('home');
+      const f = (lastFocus && document.body.contains(lastFocus)) ? lastFocus : document.querySelector('#home .f');
+      if(f){ f.focus(); f.scrollIntoView({ block: 'nearest' }); }
+    }
+    else home();
+    return;
+  }
+  // Addon changes made while another view was open leave Home stale. Rebuild
+  // it on the next root Back instead of exiting with the old catalog list.
+  if(homeDirty){ home(); return; }
   // Already at the root. The Coolita integration guide specifies window.close()
   // as the way to leave an H5 app and return to the launcher. Browsers that
   // refuse (any window not opened by script) simply ignore it.
@@ -1201,57 +1487,65 @@ function flexGap(){
 function renderDiag(){
   const el = $('#diag'); if(!el) return;
   const ua = navigator.userAgent, m = /Chrome\/(\d+)/.exec(ua);
+  const probe = document.createElement('video');
+  const can = t => probe.canPlayType(t) || 'no';
+  const mse = t => { try { return (window.MediaSource && MediaSource.isTypeSupported(t)) ? 'yes' : 'no'; } catch(e){ return 'no'; } };
+  let videoEngine = window.Hls ? 'hls.js loaded' : 'hls.js not loaded';
+  try {
+    if(window.Hls && typeof Hls.isSupported === 'function') videoEngine = Hls.isSupported() ? 'hls.js ready' : 'hls.js unsupported';
+  } catch(e){ videoEngine = 'hls.js probe failed'; }
+  const h264 = 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"';
+  const hevc = 'video/mp4; codecs="hvc1.1.6.L93.B0"';
+  const ac3 = 'video/mp4; codecs="ac-3"';
+  const eac3 = 'video/mp4; codecs="ec-3"';
   const rows = [
     ['Engine', m ? 'Chrome ' + m[1] : 'unknown'],
     ['Coolita UA', /Coolita/i.test(ua) ? 'yes' : 'no'],
+    ['Native HLS', can('application/vnd.apple.mpegurl')],
+    ['MSE H.264/AAC', mse(h264)],
+    ['MSE HEVC', mse(hevc)],
+    ['MSE AC-3 / E-AC-3', mse(ac3) + ' / ' + mse(eac3)],
     ['Flex gap', flexGap() ? 'yes' : 'no (layout uses margins)'],
     ['Intl.DisplayNames', (typeof Intl !== 'undefined' && Intl.DisplayNames) ? 'yes' : 'no (built-in table)'],
-    ['Video engine', (window.MediaSource ? 'MSE yes' : 'MSE no') + ' / ' + (window.Hls ? (Hls.isSupported() ? 'hls.js ready' : 'hls.js unsupported') : 'hls.js not loaded')],
+    ['Video engine', (window.MediaSource ? 'MSE yes' : 'MSE no') + ' / ' + videoEngine],
     ['Fullscreen API', (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen) ? 'yes' : 'no'],
     ['Storage', 'app opened ' + launches + ' time(s) on record (stuck at 1 = not persisting)'],
     ['Screen', innerWidth + 'x' + innerHeight + ' @' + (window.devicePixelRatio || 1) + 'x'],
+    ['CPU / memory', (navigator.hardwareConcurrency || '?') + ' cores / ' + (navigator.deviceMemory ? navigator.deviceMemory + ' GB class' : 'memory n/a')],
     ['JS memory', (window.performance && performance.memory) ? Math.round(performance.memory.usedJSHeapSize / 1048576) + ' MB' : 'n/a']
   ];
   el.innerHTML = rows.map(r => '<div><b>' + esc(r[0]) + ':</b> ' + esc(r[1]) + '</div>').join('') +
+    '<div id="diagDrm"><b>DRM:</b> testing…</div>' +
+    '<div id="diagUa"><b>Device model:</b> n/a</div>' +
     '<div style="margin-top:.5rem;color:var(--muted);font-size:.9rem;word-break:break-all">' + esc(ua) + '</div>' +
     '<div id="diagKey" style="margin-top:.5rem;color:var(--muted)">Press any remote key (try Back) to see its code. OK refreshes.</div>';
+  // These probes are async, so they update in place without delaying settings.
+  if(navigator.userAgentData && navigator.userAgentData.getHighEntropyValues){
+    try {
+      navigator.userAgentData.getHighEntropyValues(['model','platformVersion']).then(v => {
+        const d = $('#diagUa'); if(d) d.innerHTML = '<b>Device model:</b> ' + esc([v.model, v.platformVersion].filter(Boolean).join(' / ') || 'n/a');
+      }).catch(() => {});
+    } catch(e){}
+  }
+  if(navigator.requestMediaKeySystemAccess){
+    (async () => {
+      const out = [];
+      for(const [k, label] of [['com.widevine.alpha','Widevine'], ['com.microsoft.playready','PlayReady']]){
+        try {
+          await navigator.requestMediaKeySystemAccess(k, [{ initDataTypes:['cenc'], videoCapabilities:[{ contentType:'video/mp4; codecs="avc1.42E01E"' }] }]);
+          out.push(label + ' yes');
+        } catch(e){ out.push(label + ' no'); }
+      }
+      const d = $('#diagDrm'); if(d) d.innerHTML = '<b>DRM:</b> ' + esc(out.join(' / '));
+    })();
+  } else { const d = $('#diagDrm'); if(d) d.innerHTML = '<b>DRM:</b> EME not available'; }
 }
-const TV_KEYS = { 37: 'ArrowLeft', 38: 'ArrowUp', 39: 'ArrowRight', 40: 'ArrowDown', 13: 'Enter', 8: 'Backspace', 27: 'Escape' };
+const TV_KEYS = { 37: 'ArrowLeft', 38: 'ArrowUp', 39: 'ArrowRight', 40: 'ArrowDown', 13: 'Enter', 8: 'Backspace', 27: 'Escape', 179: 'MediaPlayPause', 85: 'MediaPlayPause', 126: 'MediaPlay', 127: 'MediaPause', 89: 'MediaRewind', 90: 'MediaFastForward' };
 addEventListener('click', e => {
   const t = e.target && e.target.closest ? e.target.closest('.f') : null;
   if(t && t.focus){ try { t.focus({ preventScroll: true }); } catch(err) { t.focus(); } }
 }, true);
-// Optional Coolita cursor-hide experiment. Use the on-screen button with the remote OK button.
-// Pointer Lock is opt-in because it can change how the remote moves the pointer.
-function toggleTvPointerLock(){
-  const locked = document.pointerLockElement || document.webkitPointerLockElement;
-  if(locked){
-    const exit = document.exitPointerLock || document.webkitExitPointerLock;
-    if(exit){ try { exit.call(document); } catch(e){} }
-    return;
-  }
-  const target = document.documentElement;
-  const req = target.requestPointerLock || target.webkitRequestPointerLock;
-  if(!req){ toast('Pointer Lock is not supported by this TV browser'); return; }
-  try {
-    const result = req.call(target);
-    if(result && result.catch) result.catch(() => toast('Pointer Lock was blocked by this TV browser'));
-  } catch(e){ toast('Pointer Lock could not be enabled'); }
-}
-addEventListener('pointerlockerror', () => toast('Pointer Lock failed on this TV browser'));
-// Remote-friendly trigger: focus this on-screen control with the pointer or D-pad,
-// then press OK/Enter. No physical P key or keyboard is required.
-(function addRemotePointerLockButton(){
-  const b = document.createElement('button');
-  b.id = 'tvPointerLockTestBtn';
-  b.className = 'f';
-  b.type = 'button';
-  b.textContent = 'Test cursor hide';
-  b.setAttribute('aria-label', 'Test hiding the TV cursor');
-  b.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:2147483647;padding:12px 16px;border:2px solid #fff;border-radius:8px;background:#20242c;color:#fff;font-size:16px;box-shadow:0 2px 12px #0008;';
-  b.addEventListener('click', toggleTvPointerLock);
-  document.body.appendChild(b);
-})();
+// Remote-friendly activation: some TV browsers dispatch a key but not a click.
 
 let tvFullscreenAttempted = false;
 function requestTvFullscreen(){
@@ -1269,23 +1563,28 @@ addEventListener('keydown', e => {
   requestTvFullscreen();
   const c = e.keyCode;
   const k = TV_KEYS[c] || e.key;
-  const dk = $('#diagKey'); if(dk && dk.offsetParent) dk.textContent = 'Last key: key="' + e.key + '"  keyCode=' + c;
+  const dk = $('#diagKey'); if(dk && dk.getClientRects().length) dk.textContent = 'Last key: key="' + e.key + '"  keyCode=' + c;
   // Leave browser shortcuts (Ctrl+R, F5, F11, ...) alone.
   if(e.ctrlKey || e.metaKey || e.altKey) return;
   if(/^F\d+$/.test(k)) return;
   const act = document.activeElement, inInput = act && act.tagName === 'INPUT';
   const back = k === 'Escape' || k === 'BrowserBack' || c === 4 || c === 10009 || c === 461 || (k === 'Backspace' && !inInput);
+  if(back && dk && dk.getClientRects().length) toast('Last key: key="' + e.key + '"  keyCode=' + c);
   if(!$('#player').classList.contains('hidden')){
     const inCtrls = ctrlsOn() && act && act.closest && act.closest('#ctrls');
-    const playPause = k === ' ' || k === 'MediaPlayPause' || c === 415 || c === 19;
+    const playPause = k === ' ' || k === 'MediaPlayPause' || k === 'MediaPlay' || k === 'MediaPause' || c === 415 || c === 179 || c === 85 || c === 126 || c === 127;
+    const rewind = k === 'MediaRewind' || c === 89;
+    const forward = k === 'MediaFastForward' || c === 90;
     const menuOn = !$('#tracks').classList.contains('hidden');
     const nextOn = !$('#nextOverlay').classList.contains('hidden');
     const srcOn = !$('#streams').classList.contains('hidden');
-    if(back){ if(nextOn){clearTimeout(nextTimer);$('#nextOverlay').classList.add('hidden');} else if(menuOn) closeMenu(); else if(srcOn) closeSources(); else closePlayer(); }
+    if(back){ if(nextOn){ cancelNextAutoplay(); showCtrls(true); } else if(menuOn) closeMenu(); else if(srcOn) closeSources(); else closePlayer(); }
     else if(nextOn){ if(k==='ArrowUp') move('up'); else if(k==='ArrowDown') move('down'); else if(k==='Enter' && act) act.click(); }
     else if(menuOn){ if(k === 'ArrowUp') move('up'); else if(k === 'ArrowDown') move('down'); else if(k === 'Enter' && act) act.click(); }
     else if(srcOn){ if(k === 'ArrowUp') move('up'); else if(k === 'ArrowDown') move('down'); else if(k === 'Enter' && act) act.click(); }
     else if(playPause){ toggle(); showCtrls(); }
+    else if(rewind){ seek(-10); showCtrls(); }
+    else if(forward){ seek(10); showCtrls(); }
     else if(k === 'f' || k === 'F'){ toggleFullscreen(); showCtrls(); }
     else if(inCtrls){
       if(act.id === 'bar' && (k === 'ArrowLeft' || k === 'ArrowRight')) seek(k === 'ArrowLeft' ? -10 : 10);
@@ -1302,7 +1601,13 @@ addEventListener('keydown', e => {
     else if(k === 'ArrowUp' || k === 'ArrowDown'){ showCtrls(true); }
     e.preventDefault(); return;
   }
-  if(back){ e.preventDefault(); goBack(); return; }
+  if(back){
+    e.preventDefault();
+    // The first Back press leaves a text field (and closes the on-screen
+    // keyboard) instead of exiting the page.
+    if(inInput){ act.blur(); return; }
+    goBack(); return;
+  }
   const dir = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }[k];
   if(dir){
     if(inInput && (dir === 'left' || dir === 'right')){
@@ -1314,47 +1619,57 @@ addEventListener('keydown', e => {
     e.preventDefault(); move(dir);
   } else if(k === 'Enter'){
     if(act && act.id === 'q'){ search(act.value); }
+    else if(act && act.id === 'au'){ e.preventDefault(); const b = $('#aadd'); if(b) b.click(); }
     else if(act && act.classList.contains('f') && !inInput){ e.preventDefault(); act.click(); }
   }
 });
-$('#exitbtn').onclick = () => { try { window.close(); } catch(e){} setTimeout(() => toast('Press the Home button on your remote to leave'), 500); };
+$('#exitbtn').onclick = () => { saveProgress(); cancelNextAutoplay(); try { window.close(); } catch(e){} setTimeout(() => toast('Press the Home button on your remote to leave'), 500); };
 document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => b.dataset.go === 'home' ? home() : settings());
 
 // Coolita remotes may control the browser as a mouse pointer instead of
 // dispatching arrow-key events to the page. Keep DOM focus in sync with the
 // item under that pointer, so OK/Enter activates the same item as D-pad mode.
-let pointerFocusT = 0;
+let pointerFocusT = 0, pointerTarget = null, pointerRaf = 0;
+const nextFrame = window.requestAnimationFrame ? window.requestAnimationFrame.bind(window) : fn => setTimeout(fn, 16);
 function focusPointerTarget(e){
   const t = e.target && e.target.closest ? e.target.closest('.f') : null;
-  if(!t || !document.body.contains(t) || t.offsetParent === null) return;
+  if(!t || !document.body.contains(t) || !t.getClientRects().length) return;
   // Avoid repeated focus calls from high-frequency mousemove events.
   if(document.activeElement !== t){
     clearTimeout(pointerFocusT);
     pointerFocusT = setTimeout(() => {
-      if(document.body.contains(t) && t.offsetParent !== null && document.activeElement !== t){
+      if(document.body.contains(t) && t.getClientRects().length && document.activeElement !== t){
         try { t.focus({ preventScroll: true }); } catch(err) { t.focus(); }
       }
     }, 25);
   }
 }
-addEventListener('mousemove', focusPointerTarget, true);
-addEventListener('mouseover', focusPointerTarget, true);
-addEventListener('pointermove', focusPointerTarget, true);
+function queuePointerFocus(e){
+  pointerTarget = e.target;
+  if(pointerRaf) return;
+  pointerRaf = nextFrame(() => { pointerRaf = 0; if(pointerTarget) focusPointerTarget({ target: pointerTarget }); });
+}
+addEventListener('mousemove', queuePointerFocus, true);
+addEventListener('mouseover', queuePointerFocus, true);
+addEventListener('pointermove', queuePointerFocus, true);
 // Some TV browsers report OK as a key but do not synthesize a DOM click.
 // If the pointer is over a focusable app item, activate it on Enter as usual.
 // Leaving the app (launcher takeover, screen off) must not leave the decoder
 // running: on these boxes that is what produces a dead player on return.
 document.addEventListener('visibilitychange', () => {
   if(!document.hidden) return;
+  saveProgress();
+  cancelNextAutoplay();
   const v = $('#v');
   if(v && !v.paused){ try { v.pause(); } catch(e){} }
 });
+addEventListener('pagehide', () => { saveProgress(); cancelNextAutoplay(); });
 
 // ---------- start ----------
 (async () => {
   // Paint a shell immediately so a slow or unreachable addon cannot leave the
   // screen blank while the manifests are fetched.
-  launches = Number(store.get('launches', 0)) + 1; store.set('launches', launches);
+  launches = Number(store.get('launches', 0)) + 1; if(!isFinite(launches) || launches < 1) launches = 1; store.set('launches', launches);
   show('home'); homeBuilt = true;
   const shell = '<div id="hero" class="hero2 hidden"></div><div id="rows">';
   // A TV browser old enough to lack fetch() cannot reach any addon. Say so
