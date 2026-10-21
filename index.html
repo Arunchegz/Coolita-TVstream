@@ -146,14 +146,6 @@ video::cue{background:rgba(0,0,0,.7);color:#fff;font-size:var(--subtitle-size,1.
   .ep .eth{height:6.1875rem}
 }
 </style>
-<style>
-
-/* Coolita cursor experiment: transparent cursor image; navigation/focus logic unchanged */
-html, body, body *, body *::before, body *::after {
-  cursor: url("data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=") 0 0, none !important;
-}
-
-</style>
 </head>
 <body>
 <div id="nav">
@@ -261,6 +253,7 @@ function saveProgress(){
   if(done) delete all[key];
   else all[key] = { type:lastStream.type, id:lastStream.id, title:$('#ptitle').textContent,
     position:v.currentTime, duration:v.duration, poster:lastStream.poster || '', updated:Date.now(),
+    seriesId:lastStream.seriesId || '', seriesName:lastStream.seriesName || '',
     nextEpisode:lastStream.nextEpisode || null };
   store.set(progressKey, all);
 }
@@ -278,7 +271,7 @@ function removeProgress(type, id){
 function renderContinueRow(){
   const items = Object.values(progressAll()).filter(x => x && x.duration && x.position > 3 && x.position/x.duration < .95).sort((a,b)=>b.updated-a.updated);
   if(!items.length) return;
-  const row = mkRow('Continue Watching');
+  const row = mkRow('Continue Watching'); row.el.id = 'cwrow';
   const R = $('#rows'); if(!R) return;
   R.prepend(row.el);
   items.slice(0,20).forEach(item => {
@@ -310,13 +303,55 @@ function renderContinueRow(){
     t.innerHTML = esc(item.title) + '<br>' + esc(fmt(left)) + ' left of ' + esc(fmt(item.duration));
     c.appendChild(poster); c.appendChild(t);
     c.setAttribute('aria-label', item.title + ', ' + fmt(left) + ' left');
-    c.onclick=()=>{ pendingResume = item.position; streams(item.type,item.id,item.title,item); };
+    c.onclick=()=>{ pendingResume = item.position; streams(item.type,item.id,item.title,item); hydrateEpisodeChain(item); };
     row.list.appendChild(c);
   });
   hydrateBg(row.list);
 }
+// A Continue Watching card only stores the next episode. Rebuild the full
+// episode list in the background so autoplay keeps going past that one.
+const byEpOrder = (x, y) => (x.season || 0) - (y.season || 0) || (x.episode || 0) - (y.episode || 0);
+async function fetchSeriesEpisodes(sid){
+  const ads = addons.filter(a => supports(a.m, 'meta', 'series', sid));
+  const got = (await Promise.all(ads.map(a => j(a.b + '/meta/series/' + enc(sid) + '.json', 20000).then(d => d && d.meta).catch(() => null)))).filter(Boolean);
+  const vs = [], seen = new Set();
+  got.forEach(f => (f.videos || []).forEach(v => { if(v && v.id && !seen.has(v.id)){ seen.add(v.id); vs.push(v); } }));
+  const m = Object.assign({}, ...got.slice().reverse());
+  return { name: m.name || '', poster: m.poster || '', videos: vs };
+}
+async function hydrateEpisodeChain(item){
+  const sid = item.seriesId || (String(item.id).includes(':') ? String(item.id).split(':')[0] : '');
+  if(item.type !== 'series' || !sid) return;
+  try {
+    const info = await fetchSeriesEpisodes(sid);
+    if(!lastStream || lastStream.id !== item.id) return;   // user already moved on
+    const ordered = info.videos.slice().sort(byEpOrder), ix = ordered.findIndex(v => v.id === item.id);
+    if(ix < 0) return;
+    const name = lastStream.seriesName || item.seriesName || info.name;
+    lastStream.epList = ordered; lastStream.epIndex = ix; lastStream.seriesName = name; lastStream.seriesId = sid;
+    lastStream.nextEpisode = ix + 1 < ordered.length ? epMeta(ordered[ix + 1], name, info.poster) : null;
+  } catch(e){}
+}
+// Rebuild the row in place (after watching something, or returning home).
+function refreshContinueRow(){
+  if(searchActive || !$('#hero')) return;
+  const R = $('#rows'); if(!R) return;
+  const old = $('#cwrow'); if(old) old.remove();
+  renderContinueRow();
+}
+// Put focus back on whatever launched playback; if that element is gone
+// (e.g. its Continue Watching card was rebuilt) land somewhere sensible.
+function restoreFocus(pref){
+  let f = pref && document.body.contains(pref) && pref.offsetParent ? pref : null;
+  if(!f) f = cur === 'detail' ? document.querySelector('#playbtn')
+    : (document.querySelector('#cwrow .card') || document.querySelector('#hplay') || document.querySelector('#home .card'));
+  if(!f) f = document.querySelector('#nav .f');
+  if(!f) return;
+  try { f.focus({ preventScroll: true }); } catch(e){ f.focus(); }
+  if(f.scrollIntoView && !f.closest('#nav, #hero, .dhero')) f.scrollIntoView({ block: 'center' });
+}
 let pendingResume = null;
-let nextTimer = null, subtitleSize = Number(store.get('subtitleSize',1.4)), subtitleDelay = Number(store.get('subtitleDelay',0));
+let nextTimer = null, subtitleSize = Number(store.get('subtitleSize',1.4)), subtitleDelay = 0;
 function applySubtitleSize(){ document.documentElement.style.setProperty('--subtitle-size',subtitleSize+'em'); }
 applySubtitleSize();
 
@@ -365,7 +400,7 @@ const needsExtra = c => (c.extra || []).some(e => e.isRequired) || (c.extraRequi
 const searchable = c => (c.extra || []).some(e => e.name === 'search') || (c.extraSupported || []).includes('search') || (c.extraRequired || []).includes('search');
 
 // ---------- views ----------
-let homeBuilt = false, lastFocus = null, searchActive = false;
+let homeBuilt = false, lastFocus = null, launchFocus = null, searchActive = false;
 // Bumped by every view change. Async loaders capture it and bail if it moved,
 // so a fetch that finishes after the user navigated away can neither render
 // over the new view nor steal focus from it.
@@ -477,7 +512,13 @@ async function home(){
   const R = $('#rows'), rows = [];
   renderContinueRow();
   addons.forEach(a => (a.m.catalogs || []).forEach(c => { if(!needsExtra(c)) rows.push({ a, c }); }));
-  if(!rows.length){ R.className = 'pad'; R.innerHTML = '<div class="msg">No catalogs available. Open Addons and add one.</div>'; return; }
+  if(!rows.length){
+    R.className = 'pad';
+    const mm = document.createElement('div'); mm.className = 'msg'; mm.textContent = 'No catalogs available. Open Addons and add one.';
+    R.appendChild(mm);
+    const f0 = document.querySelector('#home .f'); if(f0 && (!document.activeElement || document.activeElement === document.body)) f0.focus();
+    return;
+  }
   // HTTP/1.x allows few parallel connections per host and posters compete for
   // them, so catalogs load three at a time with one retry before a row is dropped.
   const queue = rows.slice(0, 14).map(({ a, c }) => {
@@ -553,7 +594,7 @@ async function detail(type, id, stub){
   const tag = 'S' + (first.season || 0) + ' E' + (first.episode || 1);
   pb.textContent = '\u25B6 Play ' + tag;
   pb.setAttribute('aria-label', 'Play ' + tag);
-  pb.onclick = () => { const ordered=vids.slice().sort(byOrder), ix=ordered.findIndex(v=>v.id===first.id); const next = ix+1 < ordered.length ? epMeta(ordered[ix+1], m.name, m.poster) : null; window.currentMediaPoster=first.thumbnail||m.poster||''; streams('series', first.id, m.name + ' - ' + tag, {poster:window.currentMediaPoster, nextEpisode:next, epList:ordered, epIndex:ix, seriesName:m.name}); };
+  pb.onclick = () => { const ordered=vids.slice().sort(byOrder), ix=ordered.findIndex(v=>v.id===first.id); const next = ix+1 < ordered.length ? epMeta(ordered[ix+1], m.name, m.poster) : null; window.currentMediaPoster=first.thumbnail||m.poster||''; streams('series', first.id, m.name + ' - ' + tag, {poster:window.currentMediaPoster, nextEpisode:next, epList:ordered, epIndex:ix, seriesName:m.name, seriesId:id}); };
   const seasons = [...new Set(vids.map(v => v.season || 0))].sort((x, y) => x - y);
   let sel = seasons.find(x => x > 0);
   if(sel == null) sel = seasons[0];
@@ -601,9 +642,11 @@ async function streams(type, id, title, opts){
     poster: opts.poster || window.currentMediaPoster || '',
     nextEpisode: opts.nextEpisode || null,
     epList: opts.epList || null, epIndex: opts.epIndex == null ? null : opts.epIndex,
-    seriesName: opts.seriesName || '',
+    seriesName: opts.seriesName || '', seriesId: opts.seriesId || '',
     resumeAt: pendingResume };
   pendingResume = null;
+  subtitleDelay = 0;   // a delay tuned for one title must not follow the next
+  { const ae = document.activeElement; if(ae && ae !== document.body && ae.closest && !ae.closest('#player, #streams')) launchFocus = ae; }
   $('#streams').classList.remove('hidden');
   $('#st-title').textContent = title;
   const L = $('#st-list'); L.innerHTML = '<div class="msg">Looking for sources…</div>';
@@ -681,7 +724,7 @@ function closeSources(){
   if($('#player').classList.contains('hidden')) streamsGen++;
   $('#streams').classList.add('hidden');
   if(!$('#player').classList.contains('hidden')){ showCtrls(true); return; }
-  const f = document.querySelector(cur === 'detail' ? '#playbtn' : '#hplay'); if(f) f.focus();
+  restoreFocus(launchFocus);
 }
 
 function addStream(L, a, s, title, i){
@@ -784,12 +827,17 @@ function showCtrls(focusPlay){
   clearTimeout(ctrlT); ctrlT = setTimeout(hideCtrls, 4500);
   if(focusPlay) $('#cplay').focus();
 }
-function hideCtrls(){
-  if(!$('#tracks').classList.contains('hidden')) return;
+function hideCtrls(force){
+  if(!force){
+    if(!$('#tracks').classList.contains('hidden')) return;
+    if(!$('#streams').classList.contains('hidden') || !$('#nextOverlay').classList.contains('hidden')) return;
+    // Like other players, stay visible while paused.
+    if($('#v').paused && !$('#player').classList.contains('hidden')) return;
+  }
+  // Release focus first: with the controls hidden, arrow keys seek and
+  // Up/Down bring the bar back, so a hidden bar never traps the remote.
   const a = document.activeElement;
-  // Remote-only: the focus ring is the cursor, so never hide the controls
-  // out from under a focused button.
-  if(a && a.closest && a.closest('#ctrls')) return;
+  if(a && a.closest && a.closest('#ctrls') && a.blur) a.blur();
   $('#ctrls').classList.add('off');
 }
 const ctrlsOn = () => !$('#ctrls').classList.contains('off');
@@ -800,7 +848,9 @@ function seek(dt){ const v = $('#v'); v.currentTime = Math.max(0, v.currentTime 
 function matchPref(tracks, pref, langOf, nameOf){
   const p = String(pref || '').toLowerCase().trim();
   if(!p || !tracks.length) return -1;
-  let i = tracks.findIndex(t => String(langOf(t) || '').toLowerCase() === p);
+  // 'en', 'eng' and 'English' are the same language.
+  const pn = String(langName(p) || '').toLowerCase();
+  let i = tracks.findIndex(t => { const l = String(langOf(t) || '').toLowerCase(); return l === p || (l !== '' && String(langName(l)).toLowerCase() === pn); });
   if(i >= 0) return i;
   i = tracks.findIndex(t => String(langOf(t) || '').toLowerCase().startsWith(p));
   if(i >= 0) return i;
@@ -833,7 +883,7 @@ function applyPreferredTracks(){
     if(i >= 0) it={kind:'native',t:list[i]};
   }
   if(!it){
-    const i = matchPref(subList, sp, () => '', x => x.label);
+    const i = matchPref(subList, sp, x => x.code, x => x.label);
     if(i >= 0) it = subList[i];
   }
   if(it)pickSub(it);
@@ -922,13 +972,14 @@ function closePlayer(fromFailure){
     if(ex){ try { const r = ex.call(document); if(r && r.catch) r.catch(() => {}); } catch(e){} }
   }
   closeMenu();
-  hideCtrls();
+  hideCtrls(true);
   $('#player').classList.add('hidden');
   if(fromFailure && currentSources.length){
     $('#streams').classList.remove('hidden');
     const f = document.querySelector('#st-list .f'); if(f) f.focus();
   } else {
-    const f = document.querySelector(cur === 'detail' ? '#playbtn' : '#hplay'); if(f) f.focus();
+    if(cur === 'home') refreshContinueRow();
+    restoreFocus(launchFocus);
   }
 }
 $('#v').addEventListener('error', () => handleStreamFailure());
@@ -951,7 +1002,7 @@ function playNextEpisode(){
   streams(nxt.type, nxt.id, nxt.title, {
     poster: nxt.poster || '',
     nextEpisode: ni == null ? null : epAt(L, ni + 1, lastStream.seriesName, lastStream.poster),
-    epList: L, epIndex: ni, seriesName: lastStream.seriesName
+    epList: L, epIndex: ni, seriesName: lastStream.seriesName, seriesId: lastStream.seriesId
   });
 }
 $('#nextPlay').onclick=playNextEpisode;
@@ -977,7 +1028,7 @@ function applySubtitleDelay(force){
   Array.from($('#v').textTracks).forEach(t => { if(force) trackSeen.delete(t); applyDelayToTrack(t); });
 }
 function adjustSubtitleDelay(delta){
-  subtitleDelay=Math.max(-10,Math.min(10,subtitleDelay+delta)); store.set('subtitleDelay',subtitleDelay);
+  subtitleDelay=Math.max(-10,Math.min(10,subtitleDelay+delta));
   applySubtitleDelay(true);
   toast('Subtitle delay '+(subtitleDelay>=0?'+':'')+subtitleDelay.toFixed(1)+'s');
 }
@@ -1023,7 +1074,7 @@ function resetSubs(s){
     if(!x || !x.url) return;
     const code = x.lang || x.id || '';
     const n = count[code] = (count[code] || 0) + 1;
-    subList.push({ kind: 'ext', url: x.url, label: langName(code) + (n > 1 ? ' ' + n : ''), from });
+    subList.push({ kind: 'ext', url: x.url, label: langName(code) + (n > 1 ? ' ' + n : ''), code: x.lang || '', from });
   };
   (s.subtitles || []).forEach(x => add(x, 'stream'));
   const { type, id } = lastStream;
@@ -1084,7 +1135,7 @@ function renderMenu(){
     // Embedded tracks are hidden only when HLS already exposes the same label.
     const shown = new Set(hlsSubs.map(t => String(t.name || '')));
     nativeTracks.filter(t => !shown.has(String(t.label || ''))).forEach(t => items.push({ label: t.label || langName(t.language) || 'Embedded', on: !!curSub && curSub.t === t, pick: () => { pickSub({ kind: 'native', t }); store.set('preferredSubtitle',String(t.language||t.label||'')); } }));
-    subList.forEach(x => items.push({ label: x.label + (x.from === 'stream' ? '' : '  (' + x.from + ')'), on: curSub === x, pick: () => { pickSub(x); store.set('preferredSubtitle',String(x.label||'')); } }));
+    subList.forEach(x => items.push({ label: x.label + (x.from === 'stream' ? '' : '  (' + x.from + ')'), on: curSub === x, pick: () => { pickSub(x); store.set('preferredSubtitle',String(x.code||x.label||'')); } }));
     if(subPending) note = 'Looking for more subtitles...';
     else if(items.length === 1) note = 'No subtitles found. Install a subtitles addon (for example OpenSubtitles) in Addons.';
   }
@@ -1115,7 +1166,8 @@ function settings(){
   el.innerHTML = '<h2>Install an addon</h2><p>Paste a manifest link (it ends in manifest.json). Typing is easier from a phone browser: open this page with ?addon=MANIFEST_URL at the end and it installs itself.</p>' +
     '<input id="au" class="f" placeholder="https://example.com/manifest.json" tabindex="0" aria-label="Addon manifest link"><span class="f btn w" id="aadd" tabindex="0" role="button">Install</span>' +
     '<h2>Installed</h2><div id="alist"></div>' +
-    '<h2>Diagnostics</h2><div class="f row2" id="diag" tabindex="0" role="button" aria-label="Diagnostics. Press OK to refresh."></div>';
+    '<h2>Diagnostics</h2><div class="f row2" id="diag" tabindex="0" role="button" aria-label="Diagnostics. Press OK to refresh."></div>' +
+    '<h2>Cursor</h2><div class="f row2" id="ptrlock" tabindex="0" role="button">Test cursor hide (press OK)</div>';
   const list = $('#alist');
   let pendingRemove = -1, removeT = null;
   urls.forEach((u, i) => {
@@ -1148,6 +1200,7 @@ function settings(){
     } catch(e){ toast('Could not load that addon. Check the link.'); }
   };
   $('#diag').onclick = renderDiag; renderDiag();
+  $('#ptrlock').onclick = toggleTvPointerLock;
   $('#au').focus();
 }
 
@@ -1179,7 +1232,7 @@ function move(dir){
 function goBack(){
   if(!$('#streams').classList.contains('hidden')){ closeSources(); return; }
   if(searchActive && cur === 'home'){ searchActive = false; home(); return; }
-  if(cur !== 'home'){ if(homeBuilt){ show('home'); if(lastFocus && document.body.contains(lastFocus)){ lastFocus.focus(); lastFocus.scrollIntoView({ block: 'center' }); } } else home(); return; }
+  if(cur !== 'home'){ if(homeBuilt){ show('home'); refreshContinueRow(); restoreFocus(lastFocus); } else home(); return; }
   // Already at the root. The Coolita integration guide specifies window.close()
   // as the way to leave an H5 app and return to the launcher. Browsers that
   // refuse (any window not opened by script) simply ignore it.
@@ -1242,6 +1295,7 @@ addEventListener('pointerlockerror', () => toast('Pointer Lock failed on this TV
 // Remote-friendly trigger: focus this on-screen control with the pointer or D-pad,
 // then press OK/Enter. No physical P key or keyboard is required.
 (function addRemotePointerLockButton(){
+  if(!/[?&]debug(=|&|$)/.test(location.search)) return;   // hidden unless ?debug is in the URL
   const b = document.createElement('button');
   b.id = 'tvPointerLockTestBtn';
   b.className = 'f';
