@@ -1,0 +1,1364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TVStream</title>
+<style>
+:root{--bg:#141414;--surface:#262626;--surface2:#3b3b3b;--text:#fff;--muted:#b3b3b3;--accent:#e50914}
+*{box-sizing:border-box;margin:0}
+/* TV remote pointer: keep the browser-rendered mouse cursor out of the TV UI. */
+html,body,body *{cursor:none!important}
+html{font-size:1.25vw;font-size:clamp(12px,1.25vw,26px);background:var(--bg)}
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+body{font-family:"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:var(--text);background:var(--bg);min-height:100vh;overflow-x:hidden}
+.hidden{display:none!important}
+#nav{position:fixed;top:0;left:0;right:0;z-index:5;display:flex;align-items:center;padding:1.1rem 3rem 2.6rem;padding:calc(1.1rem + env(safe-area-inset-top)) max(3rem,env(safe-area-inset-right)) 2.6rem max(3rem,env(safe-area-inset-left));background:linear-gradient(rgba(0,0,0,.85),transparent)}
+#nav>*+*{margin-left:1.8rem}
+.logo{font-size:1.9rem;font-weight:900;letter-spacing:.02em;color:var(--accent);margin-right:1rem}
+.navbtn{padding:.3rem .1rem;font-size:1.1rem;color:var(--muted);border-bottom:.15rem solid transparent}
+.navbtn:focus{color:#fff;box-shadow:none;transform:none;border-bottom-color:#fff}
+#q{margin-left:auto;flex:1 1 8rem;min-width:0;max-width:18rem;padding:.5rem 1rem;border:.1rem solid #555;background:rgba(0,0,0,.6);color:#fff;font-size:1.05rem;border-radius:.2rem}
+#q:focus{border-color:#fff;box-shadow:none}
+.f{outline:none;cursor:pointer;transition:transform .12s}
+.f:focus{box-shadow:0 0 0 .2rem #fff;transform:scale(1.06);z-index:2;position:relative}
+input.f:focus{transform:none}
+.view{padding:0}
+.msg{padding:3rem;color:var(--muted);font-size:1.3rem}
+.hero2,.dhero{position:relative;background:center top/cover no-repeat;display:flex;align-items:flex-end}
+.hero2{height:62vh;min-height:24rem}
+.dhero{height:64vh;min-height:24rem}
+.hshade{position:absolute;top:0;right:0;bottom:0;left:0;inset:0;background:linear-gradient(90deg,rgba(20,20,20,.95) 0%,rgba(20,20,20,.55) 42%,transparent 75%),linear-gradient(transparent 55%,var(--bg) 100%)}
+.hbody{position:relative;padding:0 3rem 4.5rem;max-width:46rem}
+.hbody h1{font-size:3.4rem;line-height:1.05;margin-bottom:.8rem;text-shadow:0 .1rem .6rem rgba(0,0,0,.6)}
+.meta{color:#d2d2d2;font-size:1.1rem;margin-bottom:.8rem}
+.desc2{font-size:1.15rem;line-height:1.45;margin-bottom:1.3rem;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;text-shadow:0 .05rem .3rem rgba(0,0,0,.7)}
+.btn{display:inline-block;padding:.7rem 1.8rem;border-radius:.3rem;font-weight:700;font-size:1.2rem;margin:0 .8rem 0 0}
+.btn.w{background:#fff;color:#000}
+.btn.g{background:rgba(109,109,110,.75);color:#fff}
+.btn:focus{box-shadow:0 0 0 .25rem var(--accent)}
+.hero2.hidden+#rows,#rows.pad{padding-top:6rem}
+.hero2:not(.hidden)+#rows{margin-top:-3.5rem;position:relative}
+#rows{padding-bottom:3rem}
+.row{margin:0 0 .8rem;padding-left:3rem}
+.row h2{font-size:1.25rem;font-weight:600;margin-bottom:.2rem;color:#e5e5e5}
+.list{display:flex;overflow:hidden;padding:.9rem .8rem 1.4rem}
+.card{flex:0 0 auto;width:9.5rem;margin-right:.9rem}
+.card:focus{transform:scale(1.12);box-shadow:none}
+.card:focus .poster{box-shadow:0 0 0 .2rem #fff}
+.poster{width:100%;aspect-ratio:2/3;border-radius:.3rem;background:var(--surface) center/cover;display:flex;align-items:flex-end;padding:.6rem;font-size:.95rem;overflow:hidden}
+.card .t{margin-top:.5rem;font-size:.95rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card:focus .t{color:#fff}
+.poster{position:relative}
+.poster .progress-track{position:absolute;left:.45rem;right:.45rem;bottom:.35rem;height:.28rem;background:rgba(255,255,255,.4);border-radius:1rem;overflow:hidden}
+.poster .progress-track span{display:block;height:100%;background:var(--accent)}
+.poster .rm{position:absolute;top:.3rem;right:.3rem;width:2.2rem;height:2.2rem;border-radius:50%;background:rgba(0,0,0,.72);color:#fff;font-size:1.4rem;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;z-index:3;cursor:pointer;transition:transform .12s}
+.poster .rm:hover{background:rgba(229,9,20,.92)}
+.poster .rm.f:focus{position:absolute;transform:scale(1.12);box-shadow:0 0 0 .2rem #fff;background:var(--accent)}
+#nextOverlay{position:absolute;right:3rem;bottom:9rem;z-index:4;background:rgba(25,25,25,.94);padding:1rem 1.2rem;border-radius:.5rem;max-width:24rem}
+#nextOverlay strong{display:block;margin-bottom:.6rem}
+#nextOverlay .btn{font-size:1rem;margin-top:.4rem}
+#subtitleTools{display:flex;align-items:center;margin-left:.5rem}
+#subtitleTools>*+*{margin-left:.35rem}
+#subtitleTools .cb{background:rgba(255,255,255,.12);min-width:2.5rem;justify-content:center}
+.dbody{padding:0 3rem 3rem}
+.chip{display:inline-block;padding:.45rem 1.1rem;border-radius:.3rem;background:var(--surface);margin:0 .6rem .8rem 0;font-size:1.05rem}
+.chip.on{background:#fff;color:#000}
+.ep{display:flex;align-items:center;padding:.9rem 1.2rem;border-radius:.3rem;border-bottom:.05rem solid #333;font-size:1.1rem}
+.ep>*+*{margin-left:1.4rem}
+.ep .en{font-size:1.6rem;color:var(--muted);width:2.4rem;text-align:center;flex:0 0 auto}
+.ep .eth{width:11rem;aspect-ratio:16/9;background:var(--surface) center/cover;border-radius:.3rem;flex:0 0 auto}
+.ep .et b{display:block;margin-bottom:.3rem}
+.ep .et span{color:var(--muted);font-size:.95rem;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ep:focus{background:var(--surface);transform:none}
+.row2{padding:.8rem 1.2rem;background:var(--surface);border-radius:.4rem;margin-bottom:.5rem;font-size:1.1rem}
+#streams{position:fixed;top:0;right:0;bottom:0;left:0;inset:0;z-index:25;background:rgba(10,10,10,.92);display:flex;justify-content:center;align-items:flex-start;padding:4rem 0;overflow:auto}
+#streams .box{width:56rem;max-width:90vw}
+#streams h2{font-size:1.6rem;margin-bottom:1rem}
+.st{padding:.9rem 1.2rem;background:var(--surface);border-radius:.4rem;margin-bottom:.5rem;font-size:1.05rem;line-height:1.35}
+.st small{display:block;color:var(--muted);margin-top:.2rem}
+.st.off{opacity:.45}
+/* Dismiss control for remote-only use: fixed to the screen corner so it stays
+   put while the source list scrolls. */
+#streams .xclose{position:fixed;top:3.4rem;right:3.4rem;width:2.8rem;height:2.8rem;border-radius:50%;background:rgba(255,255,255,.16);color:#fff;font-size:1.5rem;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;z-index:2}
+#streams .xclose:focus{background:var(--accent);box-shadow:0 0 0 .2rem #fff}
+#player{position:fixed;top:0;right:0;bottom:0;left:0;inset:0;z-index:20;background:#000}
+#player video{width:100%;height:100%;object-fit:contain}
+video::cue{background:rgba(0,0,0,.7);color:#fff;font-size:var(--subtitle-size,1.4em)}
+#ctrls{position:absolute;left:0;right:0;bottom:0;padding:4rem 3rem 1.4rem;background:linear-gradient(transparent,rgba(0,0,0,.85));transition:opacity .25s}
+#ctrls.off{opacity:0;pointer-events:none}
+#ptop{position:fixed;top:0;left:0;right:0;padding:1.6rem 3rem 4rem;background:linear-gradient(rgba(0,0,0,.8),transparent);display:flex;align-items:center}
+#ptop>*+*{margin-left:1.2rem}
+#ptitle{font-size:1.2rem;font-weight:600}
+.prog{display:flex;align-items:center;margin-bottom:1rem}
+.prog>*+*{margin-left:1.2rem}
+#bar{flex:1;height:.45rem;background:rgba(255,255,255,.3);border-radius:.25rem;cursor:pointer}
+#bar:focus{transform:none;box-shadow:0 0 0 .12rem #fff;height:.7rem}
+#fillbar{height:100%;width:0;background:var(--accent);border-radius:.25rem;position:relative}
+#fillbar::after{content:"";position:absolute;right:-.55rem;top:50%;width:1.1rem;height:1.1rem;margin-top:-.55rem;border-radius:50%;background:var(--accent)}
+#time{font-size:.95rem;min-width:4.5rem;text-align:right}
+.cbs{display:flex;align-items:center;justify-content:space-between}
+.grp{display:flex;align-items:center}
+.grp>*+*{margin-left:.3rem}
+.cb>*+*{margin-left:.4rem}
+.cb{display:flex;align-items:center;padding:.35rem .55rem;border-radius:.35rem;font-size:.9rem}
+.cb svg{width:1.6rem;height:1.6rem;display:block}
+.cb:focus{transform:none;box-shadow:0 0 0 .15rem #fff;background:rgba(255,255,255,.18)}
+#tracks{position:absolute;top:0;right:0;bottom:0;left:0;inset:0;z-index:3;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:flex-end;padding:0 3rem 8rem}
+#tracks .box{width:26rem;max-height:55vh;overflow:auto;background:var(--surface);border-radius:.6rem;padding:1rem}
+#tr-title{font-size:1.2rem;margin-bottom:.6rem}
+.opt{padding:.6rem .9rem;border-radius:.4rem;font-size:1.05rem;margin-bottom:.2rem}
+.opt.on{color:var(--accent)}
+.tnote{color:var(--muted);font-size:.95rem;line-height:1.4;padding:.5rem .3rem}
+#toast{position:fixed;left:50%;bottom:2.5rem;transform:translateX(-50%);background:var(--surface2);padding:.8rem 1.6rem;border-radius:.6rem;font-size:1.1rem;z-index:30;opacity:0;transition:opacity .25s;pointer-events:none}
+#toast.show{opacity:1}
+#settings{padding:6rem 3rem 3rem}
+.set input{width:34rem;max-width:100%;padding:.7rem 1rem;border-radius:.4rem;border:0;background:var(--surface);color:var(--text);font-size:1.1rem;margin-right:.8rem}
+.set h2{margin:1.6rem 0 .8rem;font-size:1.4rem}
+.set p{color:var(--muted);font-size:1rem;line-height:1.5;max-width:44rem;margin-bottom:.8rem}
+/* Phone overrides last: media queries add no specificity, so these must come
+   after the base rules they replace. */
+@media (max-width:700px){
+  html{font-size:16px}
+  #nav{padding-left:1rem;padding-right:1rem}
+  #nav>*+*{margin-left:.6rem}
+  #q{margin-left:auto}
+  .logo{font-size:1.25rem;margin-right:0}
+  .navbtn{font-size:.95rem}
+  #ctrls{padding:3.5rem 1rem 1rem}
+  #ptop{padding:1rem 1rem 3.2rem}
+  #ptitle{font-size:1rem}
+  .cbs{flex-wrap:wrap}
+  .cbs>.grp{margin-bottom:.4rem}
+  .grp{flex-wrap:wrap}
+  .cb span{display:none}
+  #subtitleTools{margin-left:.2rem}
+  #subtitleTools>*+*{margin-left:.2rem}
+  #subtitleTools .cb{min-width:2.2rem;font-size:.8rem;justify-content:center}
+  #tracks{padding:0 1rem 6rem}
+  #tracks .box{width:auto;max-width:92vw}
+  #nextOverlay{left:1rem;right:1rem;bottom:7rem;max-width:none}
+}
+/* Older TV browsers have no aspect-ratio: without this the posters collapse
+   to their padding height and every row renders as a sliver. */
+@supports not (aspect-ratio: 2 / 3){
+  .poster{height:14.25rem}
+  .ep .eth{height:6.1875rem}
+}
+</style>
+</head>
+<body>
+<div id="nav">
+  <div class="logo">TVStream</div>
+  <div class="f navbtn" data-go="home" tabindex="0" role="button" aria-label="Home">Home</div>
+  <div class="f navbtn" data-go="settings" tabindex="0" role="button" aria-label="Addons">Addons</div>
+  <div class="f navbtn" id="exitbtn" tabindex="0" role="button" aria-label="Exit app">Exit</div>
+  <input id="q" class="f" placeholder="Search" tabindex="0" aria-label="Search titles">
+</div>
+<main>
+  <section id="home" class="view"></section>
+  <section id="detail" class="view hidden"></section>
+  <section id="settings" class="view hidden set"></section>
+</main>
+<div id="streams" class="hidden" role="dialog" aria-modal="true" aria-labelledby="st-title"><div class="f xclose" id="st-close" tabindex="0" role="button" aria-label="Close sources">&#10005;</div><div class="box"><h2 id="st-title"></h2><div id="st-list"></div></div></div>
+<div id="player" class="hidden"><video id="v" playsinline></video>
+  <div id="ctrls" class="off">
+    <div id="ptop"><div class="f cb" id="cclose" tabindex="0" role="button" aria-label="Close player"></div><div id="ptitle"></div></div>
+    <div class="prog"><div class="f" id="bar" tabindex="0" role="slider" aria-label="Seek" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="fillbar"></div></div><div id="time">0:00</div></div>
+    <div class="cbs">
+      <div class="grp">
+        <div class="f cb" id="cplay" tabindex="0" role="button" aria-label="Play or pause"></div>
+        <div class="f cb" id="cback" tabindex="0" role="button" aria-label="Back 10 seconds"></div>
+        <div class="f cb" id="cfwd" tabindex="0" role="button" aria-label="Forward 10 seconds"></div>
+        <div class="f cb" id="cmute" tabindex="0" role="button" aria-label="Mute or unmute"></div>
+        <div class="f cb" id="cfs" tabindex="0" role="button" aria-label="Enter fullscreen"></div>
+      </div>
+      <div class="grp">
+        <div class="f cb" id="caudio" tabindex="0" role="button" aria-label="Audio tracks"></div>
+        <div class="f cb" id="csubs" tabindex="0" role="button" aria-label="Subtitles"></div>
+        <div class="f cb" id="csrc" tabindex="0" role="button" aria-label="Sources"></div>
+        <div id="subtitleTools">
+          <div class="f cb" id="subSmaller" tabindex="0" role="button" title="Smaller subtitles" aria-label="Smaller subtitles">A−</div>
+          <div class="f cb" id="subLarger" tabindex="0" role="button" title="Larger subtitles" aria-label="Larger subtitles">A+</div>
+          <div class="f cb" id="subDelayMinus" tabindex="0" role="button" title="Subtitles earlier" aria-label="Subtitles earlier">−0.5s</div>
+          <div class="f cb" id="subDelayPlus" tabindex="0" role="button" title="Subtitles later" aria-label="Subtitles later">+0.5s</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="tracks" class="hidden" role="dialog" aria-modal="true" aria-labelledby="tr-title"><div class="box"><h2 id="tr-title"></h2><div id="tr-list"></div></div></div>
+  <div id="nextOverlay" class="hidden"><strong id="nextTitle">Next episode</strong><div class="f btn w" id="nextPlay" tabindex="0" role="button">▶ Next episode</div><div class="f btn g" id="nextCancel" tabindex="0" role="button">Cancel autoplay</div></div>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+// hls.js is loaded from beside this file when a copy is deployed there, so the
+// app has no hard dependency on a third-party CDN. Falls back to cdnjs when the
+// local copy is missing.
+(function(){
+  var d = document, s = d.createElement('script');
+  s.src = 'hls.min.js';
+  s.onerror = function(){
+    var c = d.createElement('script');
+    c.src = 'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js';
+    d.head.appendChild(c);
+  };
+  d.head.appendChild(s);
+})();
+</script>
+<script>
+// Addons installed on first launch. Add your own manifest URLs here.
+const PRESET = ['https://v3-cinemeta.strem.io/manifest.json'];
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store = {
+  get(k, d){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch(e){ return d; } },
+  set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} }
+};
+const base = u => u.trim().replace(/^stremio:/, 'https:').replace(/\/manifest\.json$/, '').replace(/\/$/, '');
+const enc = id => encodeURIComponent(id).replace(/%3A/gi, ':');
+async function j(u, ms){
+  // AbortController is absent on some TV browsers: keep the call working,
+  // just without the ability to cancel the request.
+  const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+  const to = ctl ? setTimeout(() => ctl.abort(), ms || 12000) : null;
+  try {
+    const r = await fetch(u, ctl ? { signal: ctl.signal } : undefined);
+    if(!r.ok) throw new Error(r.status);
+    return await r.json();
+  } finally { if(to) clearTimeout(to); }
+}
+async function fetchText(u, ms){
+  const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+  const to = ctl ? setTimeout(() => ctl.abort(), ms || 12000) : null;
+  try {
+    const r = await fetch(u, ctl ? { signal: ctl.signal } : undefined);
+    if(!r.ok) throw new Error(r.status);
+    return await r.text();
+  } finally { if(to) clearTimeout(to); }
+}
+let toastT;
+function toast(t){ const e = $('#toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => e.classList.remove('show'), 3200); }
+
+let addons = [], cur = 'home';
+const progressKey = 'tvstream.progress.v1';
+const progressAll = () => store.get(progressKey, {});
+const progressId = (type, id) => type + ':' + id;
+function saveProgress(){
+  const v = $('#v');
+  if(!lastStream || !lastStream.id || !isFinite(v.duration) || v.duration <= 0) return;
+  const all = progressAll(), key = progressId(lastStream.type, lastStream.id);
+  const done = v.ended || v.currentTime >= v.duration - 20;
+  if(done) delete all[key];
+  else all[key] = { type:lastStream.type, id:lastStream.id, title:$('#ptitle').textContent,
+    position:v.currentTime, duration:v.duration, poster:lastStream.poster || '', updated:Date.now(),
+    nextEpisode:lastStream.nextEpisode || null };
+  store.set(progressKey, all);
+}
+function resumePosition(type,id){
+  const item = progressAll()[progressId(type,id)];
+  return item && item.duration && item.position / item.duration < .95 ? item.position : 0;
+}
+function removeProgress(type, id){
+  const all = progressAll(), key = progressId(type, id);
+  if(!(key in all)) return false;
+  delete all[key];
+  store.set(progressKey, all);
+  return true;
+}
+function renderContinueRow(){
+  const items = Object.values(progressAll()).filter(x => x && x.duration && x.position > 3 && x.position/x.duration < .95).sort((a,b)=>b.updated-a.updated);
+  if(!items.length) return;
+  const row = mkRow('Continue Watching');
+  const R = $('#rows'); if(!R) return;
+  R.prepend(row.el);
+  items.slice(0,20).forEach(item => {
+    const c=document.createElement('div'); c.className='f card'; c.tabIndex=0; c.setAttribute('role','button');
+    const pct=Math.max(0,Math.min(100,item.position/item.duration*100));
+    const left = Math.max(0, item.duration - item.position);
+    const poster=document.createElement('div'); poster.className='poster';
+    setBg(poster, item.poster);
+    if(!item.poster) poster.textContent = item.title || '';
+    const rm=document.createElement('div'); rm.className='f rm'; rm.tabIndex=0; rm.setAttribute('role','button');
+    rm.setAttribute('aria-label','Remove ' + (item.title || 'this item') + ' from Continue Watching');
+    rm.textContent='\u2715';
+    rm.onclick=(ev)=>{
+      ev.preventDefault(); ev.stopPropagation();
+      if(!removeProgress(item.type, item.id)) return;
+      const sib = c.nextElementSibling || c.previousElementSibling;
+      c.remove();
+      if(!row.list.children.length){
+        row.el.remove();
+        const f = document.querySelector('#rows .f'); if(f) f.focus();
+      } else if(sib && sib.focus) sib.focus();
+      toast('Removed from Continue Watching');
+    };
+    poster.appendChild(rm);
+    const track=document.createElement('div'); track.className='progress-track';
+    const span=document.createElement('span'); span.style.width=pct+'%';
+    track.appendChild(span); poster.appendChild(track);
+    const t=document.createElement('div'); t.className='t';
+    t.innerHTML = esc(item.title) + '<br>' + esc(fmt(left)) + ' left of ' + esc(fmt(item.duration));
+    c.appendChild(poster); c.appendChild(t);
+    c.setAttribute('aria-label', item.title + ', ' + fmt(left) + ' left');
+    c.onclick=()=>{ pendingResume = item.position; streams(item.type,item.id,item.title,item); };
+    row.list.appendChild(c);
+  });
+  hydrateBg(row.list);
+}
+let pendingResume = null;
+let nextTimer = null, subtitleSize = Number(store.get('subtitleSize',1.4)), subtitleDelay = Number(store.get('subtitleDelay',0));
+function applySubtitleSize(){ document.documentElement.style.setProperty('--subtitle-size',subtitleSize+'em'); }
+applySubtitleSize();
+
+// ---------- addons ----------
+function getUrls(){
+  let urls = store.get('urls', null);
+  if(!urls){ urls = PRESET.slice(); }
+  const p = new URLSearchParams(location.search).getAll('addon');
+  p.forEach(u => { if(!urls.map(base).includes(base(u))) urls.push(u); });
+  store.set('urls', urls);
+  return urls;
+}
+// If localStorage was wiped (the Coolita guide says cache does not outlive the
+// app), start from an optional config.json beside this file:
+// { "addons": ["https://.../manifest.json"] }
+async function loadDefaults(){
+  if(store.get('urls', null)) return;
+  try {
+    const c = await j('config.json', 4000);
+    if(c && Array.isArray(c.addons)){
+      const list = c.addons.filter(u => typeof u === 'string' && u);
+      if(list.length) store.set('urls', list);
+    }
+  } catch(e){}
+}
+async function loadAddons(){
+  await loadDefaults();
+  const urls = getUrls(); addons = [];
+  await Promise.all(urls.map(async u => {
+    try { const b = base(u); addons.push({ u, b, m: await j(b + '/manifest.json', 8000) }); } catch(e){}
+  }));
+  addons.sort((a, b) => urls.indexOf(a.u) - urls.indexOf(b.u));
+}
+function supports(m, res, type, id){
+  return (m.resources || []).some(r => {
+    const o = typeof r === 'object';
+    if((o ? r.name : r) !== res) return false;
+    const types = (o && r.types) || m.types || [];
+    const pre = (o && r.idPrefixes) || m.idPrefixes;
+    if(types.length && !types.includes(type)) return false;
+    if(pre && pre.length && !pre.some(p => id.startsWith(p))) return false;
+    return true;
+  });
+}
+const needsExtra = c => (c.extra || []).some(e => e.isRequired) || (c.extraRequired || []).length > 0;
+const searchable = c => (c.extra || []).some(e => e.name === 'search') || (c.extraSupported || []).includes('search') || (c.extraRequired || []).includes('search');
+
+// ---------- views ----------
+let homeBuilt = false, lastFocus = null, searchActive = false;
+// Bumped by every view change. Async loaders capture it and bail if it moved,
+// so a fetch that finishes after the user navigated away can neither render
+// over the new view nor steal focus from it.
+let viewGen = 0;
+function show(v){
+  cur = v; viewGen++;
+  ['home', 'detail', 'settings'].forEach(n => $('#' + n).classList.toggle('hidden', n !== v));
+  window.scrollTo(0, 0);
+}
+function mkRow(title){
+  const el = document.createElement('div'); el.className = 'row';
+  el.innerHTML = '<h2>' + esc(title) + '</h2><div class="list"></div>';
+  return { el, list: el.querySelector('.list') };
+}
+const metaLine = m => [m.releaseInfo || m.year, (m.genres || []).slice(0, 3).join(', '), m.imdbRating ? 'IMDb ' + m.imdbRating : ''].filter(Boolean).join('   |   ');
+// Background images are CSS values, not HTML text: never HTML-escape them.
+// Setting the property directly also avoids entity decoding differences between
+// innerHTML and setAttribute (which broke URLs containing "&").
+// Poster art is applied lazily. A home screen can hold 400+ cards, and the
+// Coolita guide budgets roughly 200MB for the entire app layer; decoded
+// bitmaps are the bulk of that. A card keeps its URL in data-bg and only
+// becomes a background-image once it is near the viewport.
+const BG_MARGIN = 240;
+// data-bg stays on the element so an image that scrolls far away can be
+// released (unpaintBg) and painted again if the user scrolls back.
+const BG_FAR = 900;
+function paintBg(el){
+  const u = el.getAttribute('data-bg');
+  if(u === null || el._p) return;
+  el._p = 1;
+  if(u) el.style.backgroundImage = 'url("' + u + '")';
+}
+function unpaintBg(el){
+  if(!el._p) return;
+  el._p = 0; el.style.backgroundImage = '';
+}
+function farOut(el){
+  if(!el.offsetParent) return false;          // hidden view: leave as is
+  const r = el.getBoundingClientRect();
+  return r.bottom < -BG_FAR || r.top > innerHeight + BG_FAR || r.right < -BG_FAR || r.left > innerWidth + BG_FAR;
+}
+function inView(el){
+  if(!el.offsetParent) return false;          // inside a hidden view
+  const r = el.getBoundingClientRect();
+  return r.bottom > -BG_MARGIN && r.top < innerHeight + BG_MARGIN &&
+         r.right > -BG_MARGIN && r.left < innerWidth + BG_MARGIN;
+}
+function setBg(el, u){
+  if(!el) return;
+  el.style.backgroundImage = ''; el._p = 0;
+  if(!u){ el.removeAttribute('data-bg'); return; }
+  // Only escape what can break out of a CSS string. encodeURI() must not be
+  // used here: it double-encodes existing %XX escapes (%20 -> %2520).
+  el.setAttribute('data-bg', String(u).replace(/[\r\n]/g, '').replace(/["\\]/g, '\\$&'));
+  if(inView(el)) paintBg(el);
+}
+function hydrateBg(root){
+  if(!root || !root.querySelectorAll) return;
+  const els = root.querySelectorAll('[data-bg]');
+  for(let i = 0; i < els.length; i++){ if(inView(els[i])) paintBg(els[i]); else if(els[i]._p && farOut(els[i])) unpaintBg(els[i]); }
+}
+let bgT = null;
+addEventListener('scroll', e => {
+  if(bgT) return;
+  bgT = setTimeout(() => { bgT = null; hydrateBg(e.target && e.target.nodeType === 1 ? e.target : document); }, 60);
+}, true);
+// D-pad navigation moves focus before it scrolls: paint the card the user
+// actually landed on without waiting for the scroll.
+addEventListener('focusin', e => {
+  const el = e.target;
+  if(el && el.getAttribute && el.getAttribute('data-bg') !== null) paintBg(el);
+}, true);
+
+const epMeta = (v, seriesName, poster) => ({ type:'series', id:v.id,
+  title:(seriesName || '') + ' - ' + (v.episode != null ? v.episode + '. ' : '') + (v.title || v.name || 'Episode'),
+  poster:v.thumbnail || poster || '' });
+function setHero(m, type){
+  const h = $('#hero'), bg = m.background || m.poster;
+  if(!h || h.dataset.set || !bg) return;
+  h.dataset.set = 1; h.classList.remove('hidden'); setBg(h, bg);
+  h.innerHTML = '<div class="hshade"></div><div class="hbody"><h1>' + esc(m.name) + '</h1><div class="meta">' + esc(metaLine(m)) + '</div><div class="desc2">' + esc(m.description || '') + '</div><div class="f btn w" id="hplay" tabindex="0" role="button">\u25B6 Play</div><div class="f btn g" id="hinfo" tabindex="0" role="button">More info</div></div>';
+  const t = m.type || type;
+  $('#hinfo').onclick = () => detail(t, m.id, m);
+  $('#hplay').onclick = () => { window.currentMediaPoster=m.poster||''; t === 'movie' ? streams(t, m.id, m.name, {poster:m.poster||''}) : detail(t, m.id, m); };
+}
+function fill(row, metas, type){
+  if(!metas.length){ row.el.remove(); return; }
+  const hm = metas.find(m => m.background); if(hm) setHero(hm, type);
+  metas.slice(0, 30).forEach(m => {
+    const c = document.createElement('div');
+    c.className = 'f card'; c.tabIndex = 0; c.setAttribute('role','button');
+    const poster = document.createElement('div'); poster.className = 'poster';
+    setBg(poster, m.poster);
+    if(!m.poster) poster.textContent = m.name || '';
+    const t = document.createElement('div'); t.className = 't'; t.textContent = m.name || '';
+    c.appendChild(poster); c.appendChild(t);
+    c.setAttribute('aria-label', m.name || '');
+    c.onclick = () => { const t=m.type || type; window.currentMediaPoster=m.poster||''; if(t === 'movie') streams(t, m.id, m.name, {poster:m.poster||''}); else detail(t, m.id, m); };
+    row.list.appendChild(c);
+  });
+  hydrateBg(row.list);
+  const a = document.activeElement;
+  if(!a || a === document.body){ const f = document.querySelector('#home .f'); if(f) f.focus(); }
+}
+async function home(){
+  show('home'); homeBuilt = true; searchActive = false;
+  const el = $('#home');
+  el.innerHTML = '<div id="hero" class="hero2 hidden"></div><div id="rows"></div>';
+  const R = $('#rows'), rows = [];
+  renderContinueRow();
+  addons.forEach(a => (a.m.catalogs || []).forEach(c => { if(!needsExtra(c)) rows.push({ a, c }); }));
+  if(!rows.length){ R.className = 'pad'; R.innerHTML = '<div class="msg">No catalogs available. Open Addons and add one.</div>'; return; }
+  // HTTP/1.x allows few parallel connections per host and posters compete for
+  // them, so catalogs load three at a time with one retry before a row is dropped.
+  const queue = rows.slice(0, 14).map(({ a, c }) => {
+    const row = mkRow((c.name || c.id) + ' (' + c.type + ')'); R.appendChild(row.el);
+    return { a, c, row };
+  });
+  let qi = 0;
+  const getCat = async (u) => { try { return await j(u, 20000); } catch(e){ await new Promise(r => setTimeout(r, 800)); return await j(u, 20000); } };
+  const worker = async () => {
+    while(qi < queue.length){
+      const { a, c, row } = queue[qi++];
+      if(!document.body.contains(row.el)) continue;   // user already left this view
+      try {
+        const d = await getCat(a.b + '/catalog/' + c.type + '/' + enc(c.id) + '.json');
+        if(document.body.contains(row.el)) fill(row, d.metas || [], c.type);
+      } catch(e){ if(document.body.contains(row.el)) row.el.remove(); }
+    }
+  };
+  worker(); worker(); worker();
+}
+async function search(q){
+  q = q.trim(); if(!q) return;
+  show('home'); homeBuilt = true; searchActive = true;
+  const el = $('#home');
+  el.innerHTML = '<div id="rows" class="pad"><div class="msg">Searching for "' + esc(q) + '"...</div></div>';
+  const R = $('#rows'), jobs = [];
+  addons.forEach(a => (a.m.catalogs || []).forEach(c => { if(searchable(c)) jobs.push({ a, c }); }));
+  if(!jobs.length){ R.innerHTML = '<div class="msg">None of your addons support search.</div>'; return; }
+  let n = 0; R.innerHTML = '';
+  const ae = document.activeElement; if(ae && ae.blur) ae.blur();
+  await Promise.all(jobs.map(async ({ a, c }) => {
+    try {
+      const d = await j(a.b + '/catalog/' + c.type + '/' + enc(c.id) + '/search=' + encodeURIComponent(q) + '.json');
+      if(R !== $('#rows')) return;   // a newer search already replaced this one
+      if((d.metas || []).length){ n++; const row = mkRow((c.name || c.id) + ' (' + c.type + ')'); R.appendChild(row.el); fill(row, d.metas, c.type); }
+    } catch(e){}
+  }));
+  if(R !== $('#rows')) return;
+  if(!n) R.innerHTML = '<div class="msg">No results for "' + esc(q) + '".</div>';
+}
+
+async function detail(type, id, stub){
+  if(cur === 'home'){ const a = document.activeElement; if(a && $('#home').contains(a)) lastFocus = a; }
+  show('detail');
+  const g = viewGen;
+  const el = $('#detail'); el.innerHTML = '<div class="msg" style="padding-top:8rem">Loading...</div>';
+  let m = stub || { id, name: id, type };
+  const ads = addons.filter(a => supports(a.m, 'meta', type, id));
+  if(ads.length){
+    const got = await Promise.all(ads.map(a => j(a.b + '/meta/' + type + '/' + enc(id) + '.json', 20000).then(d => d && d.meta).catch(() => null)));
+    if(g !== viewGen) return;
+    const found = got.filter(Boolean);
+    if(found.length){
+      m = Object.assign({}, ...found.slice().reverse());
+      const vs = [], seen = new Set();
+      found.forEach(f => (f.videos || []).forEach(v => { if(v && v.id && !seen.has(v.id)){ seen.add(v.id); vs.push(v); } }));
+      if(vs.length) m.videos = vs;
+    }
+  }
+  const vids = (m.videos || []).filter(v => v.id);
+  const isSeries = type === 'series';
+  const hasEps = isSeries && vids.length > 0;
+  el.innerHTML = '<div class="dhero" id="dhero"><div class="hshade"></div><div class="hbody"><h1>' + esc(m.name) + '</h1><div class="meta">' + esc([metaLine(m), m.runtime].filter(Boolean).join('   |   ')) + '</div><div class="desc2">' + esc(m.description || '') + '</div>' +
+    (hasEps || !isSeries ? '<div class="f btn w" id="playbtn" tabindex="0" role="button">\u25B6 Play</div>' : '<div class="msg">No episodes are listed for this series yet.</div>') + '</div></div>' +
+    (hasEps ? '<div class="dbody"><div id="seasons"></div><div id="eps"></div></div>' : '');
+  setBg($('#dhero'), m.background || m.poster);
+  const pb = $('#playbtn');
+  if(!pb) return;
+  if(!hasEps){ window.currentMediaPoster=m.poster||''; pb.onclick = () => streams(type, id, m.name, {poster:m.poster||''}); pb.focus(); return; }
+  const byOrder = (x, y) => (x.season || 0) - (y.season || 0) || (x.episode || 0) - (y.episode || 0);
+  const real = vids.filter(v => (v.season || 0) > 0);
+  const first = (real.length ? real : vids).slice().sort(byOrder)[0];
+  const tag = 'S' + (first.season || 0) + ' E' + (first.episode || 1);
+  pb.textContent = '\u25B6 Play ' + tag;
+  pb.setAttribute('aria-label', 'Play ' + tag);
+  pb.onclick = () => { const ordered=vids.slice().sort(byOrder), ix=ordered.findIndex(v=>v.id===first.id); const next = ix+1 < ordered.length ? epMeta(ordered[ix+1], m.name, m.poster) : null; window.currentMediaPoster=first.thumbnail||m.poster||''; streams('series', first.id, m.name + ' - ' + tag, {poster:window.currentMediaPoster, nextEpisode:next, epList:ordered, epIndex:ix, seriesName:m.name}); };
+  const seasons = [...new Set(vids.map(v => v.season || 0))].sort((x, y) => x - y);
+  let sel = seasons.find(x => x > 0);
+  if(sel == null) sel = seasons[0];
+  const draw = () => {
+    $('#seasons').innerHTML = '';
+    seasons.forEach(x => {
+      const c = document.createElement('div'); c.className = 'f chip' + (x === sel ? ' on' : ''); c.tabIndex = 0;
+      c.setAttribute('role','button'); c.setAttribute('aria-pressed', x === sel ? 'true' : 'false');
+      c.textContent = x === 0 ? 'Specials' : 'Season ' + x;
+      c.onclick = () => { sel = x; draw(); const f = document.querySelector('#seasons .on'); if(f) f.focus(); };
+      $('#seasons').appendChild(c);
+    });
+    $('#eps').innerHTML = '';
+    vids.filter(v => (v.season || 0) === sel).sort(byOrder).forEach(v => {
+      const c = document.createElement('div'); c.className = 'f ep'; c.tabIndex = 0; c.setAttribute('role','button');
+      const label = v.title || v.name || 'Episode';
+      const en = document.createElement('div'); en.className = 'en'; en.textContent = v.episode != null ? v.episode : '';
+      const et = document.createElement('div'); et.className = 'et';
+      const b = document.createElement('b'); b.textContent = label;
+      const sp = document.createElement('span'); sp.textContent = v.overview || v.description || '';
+      et.appendChild(b); et.appendChild(sp);
+      c.appendChild(en);
+      if(v.thumbnail){ const th = document.createElement('div'); th.className = 'eth'; setBg(th, v.thumbnail); c.appendChild(th); }
+      c.appendChild(et);
+      c.setAttribute('aria-label', 'Season ' + (v.season || 0) + ' episode ' + (v.episode != null ? v.episode : '') + ': ' + label);
+      c.onclick = () => {
+        const ordered=vids.slice().sort(byOrder), ix=ordered.findIndex(x=>x.id===v.id);
+        const next = ix+1 < ordered.length ? epMeta(ordered[ix+1], m.name, m.poster) : null;
+        window.currentMediaPoster=v.thumbnail||m.poster||'';
+        streams('series', v.id, m.name + ' - ' + (v.episode != null ? v.episode + '. ' : '') + label, {poster:window.currentMediaPoster, nextEpisode:next, epList:ordered, epIndex:ix, seriesName:m.name});
+      };
+      $('#eps').appendChild(c);
+    });
+    hydrateBg($('#eps'));
+  };
+  draw();
+  pb.focus();
+}
+
+async function streams(type, id, title, opts){
+  opts = opts || {};
+  // Invalidate older lookups so a late response cannot replace the current title.
+  const g = ++streamsGen;
+  lastStream = { type, id, title,
+    poster: opts.poster || window.currentMediaPoster || '',
+    nextEpisode: opts.nextEpisode || null,
+    epList: opts.epList || null, epIndex: opts.epIndex == null ? null : opts.epIndex,
+    seriesName: opts.seriesName || '',
+    resumeAt: pendingResume };
+  pendingResume = null;
+  $('#streams').classList.remove('hidden');
+  $('#st-title').textContent = title;
+  const L = $('#st-list'); L.innerHTML = '<div class="msg">Looking for sources…</div>';
+  const wasPlaying = !$('#player').classList.contains('hidden');
+  const as = addons.filter(a => supports(a.m, 'stream', type, id));
+  currentSources = []; currentSrcIdx = -1;
+  if(!as.length){ L.innerHTML = '<div class="msg">None of your addons provide streams for this title. Add a stream addon in Addons.</div>'; return; }
+
+  // Keep sources in arrival order so their indexes never change while other
+  // addons are still responding. Start the first browser-ready source as soon
+  // as it arrives instead of waiting for every addon (one slow addon can hang).
+  let found = [], autoStarted = false;
+  const playable = x => x && x.s && x.s.url && !(x.s.behaviorHints && x.s.behaviorHints.notWebReady);
+  const paint = () => {
+    if(g !== streamsGen) return;
+    currentSources = found.slice();
+    renderSourceList(L, currentSources, title);
+    if(!autoStarted){
+      const first = currentSources.findIndex(playable);
+      if(first >= 0){
+        autoStarted = true;
+        currentSrcIdx = first;
+        playSource(first);
+      }
+    }
+  };
+  await Promise.all(as.map(async a => {
+    try {
+      const d = await j(a.b + '/stream/' + type + '/' + enc(id) + '.json', 25000);
+      (d.streams || []).forEach(s => {
+        if(s && (s.url || s.externalUrl)) found.push({ s, addon:a });
+      });
+    } catch(e) {}
+    paint();
+  }));
+  if(g !== streamsGen) return;
+  paint();
+  if(autoStarted) return;
+  if(!found.length){ L.innerHTML = '<div class="msg">No sources found for this title.</div>'; return; }
+  // A user may have selected a source manually while results were loading.
+  // Do not replace that playback when the remaining addon responses arrive.
+  if(!wasPlaying && !$('#player').classList.contains('hidden')) return;
+  const first = currentSources.findIndex(playable);
+  if(first < 0){ const f = L.querySelector('.f'); if(f) f.focus(); }
+}
+// Rebuilds the source list from scratch (sources keep arriving after the
+// first one starts playing), preserving the D-pad position by index.
+function renderSourceList(L, list, title){
+  const act = document.activeElement;
+  const keep = (act && L.contains(act)) ? Array.from(L.children).indexOf(act) : -1;
+  L.innerHTML = '';
+  list.forEach((x, i) => addStream(L, x.addon, x.s, title, i));
+  if(keep >= 0 && L.children[keep]) L.children[keep].focus();
+}
+function playSource(i, keepPos){
+  const x = currentSources[i];
+  if(!x) return;
+  currentSrcIdx = i;
+  // When switching sources mid-playback, continue from the current position.
+  const v = $('#v');
+  if(keepPos && !$('#player').classList.contains('hidden') && isFinite(v.currentTime) && v.currentTime > 1){
+    lastStream.resumeAt = v.currentTime;
+  }
+  play(x.s, lastStream.title);
+}
+function openSources(){
+  const L = $('#st-list');
+  if(!L.children.length) L.innerHTML = '<div class="msg">No sources loaded for this title.</div>';
+  $('#streams').classList.remove('hidden');
+  const f = L.querySelector('.f'); if(f) f.focus();
+}
+function closeSources(){
+  // Only cancel pending lookups when nothing is playing; during playback
+  // the remaining addons may still add sources to the list.
+  if($('#player').classList.contains('hidden')) streamsGen++;
+  $('#streams').classList.add('hidden');
+  if(!$('#player').classList.contains('hidden')){ showCtrls(true); return; }
+  const f = document.querySelector(cur === 'detail' ? '#playbtn' : '#hplay'); if(f) f.focus();
+}
+
+function addStream(L, a, s, title, i){
+  const d = document.createElement('div');
+  const name = s.name || a.m.name || 'Stream';
+  const info = String(s.title || s.description || '').replace(/\n/g, '  |  ');
+  let note = '';
+  if(s.url){
+    d.className = 'f st'; d.tabIndex = 0; d.setAttribute('role','button');
+    d.setAttribute('aria-label', name + (info ? ', ' + info : ''));
+    if(i === currentSrcIdx) note = 'Currently playing';
+    else if(s.behaviorHints && s.behaviorHints.notWebReady) note = 'May not play in a TV browser';
+    d.onclick = () => { $('#streams').classList.add('hidden'); playSource(i, true); };
+  }
+  else if(s.externalUrl){
+    d.className = 'f st'; d.tabIndex = 0; d.setAttribute('role','button');
+    d.setAttribute('aria-label', name + ', opens in browser');
+    note = 'Opens in browser';
+    d.onclick = () => { try { window.open(s.externalUrl, '_blank', 'noopener'); } catch(e){} };
+  }
+  else { d.className = 'st off'; note = s.infoHash ? 'Torrent streams cannot play in a browser' : 'Not supported here'; }
+  d.innerHTML = esc(name) + (info ? '<small>' + esc(info) + '</small>' : '') + (note ? '<small>' + esc(note) + '</small>' : '');
+  L.appendChild(d);
+  const act = document.activeElement;
+  if(d.tabIndex === 0 && !$('#streams').classList.contains('hidden') && (!act || !$('#streams').contains(act))) d.focus();
+}
+
+// ---------- player ----------
+let hls = null, ctrlT;
+const fmt = t => { t = Math.max(0, Math.floor(t || 0)); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), x = String(t % 60).padStart(2, '0'); return h ? h + ':' + String(m).padStart(2, '0') + ':' + x : m + ':' + x; };
+const svg = (p, extra) => '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">' + p + (extra || '') + '</svg>';
+const rew = 'M12 5V1L7 6l5 5V7c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z';
+const ten = '<text x="12" y="16.2" font-size="7" text-anchor="middle" font-weight="700" font-family="sans-serif">10</text>';
+const volP = 'M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z';
+const IC = {
+  play: svg('<path d="M8 5v14l11-7z"/>'),
+  pause: svg('<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>'),
+  back: svg('<path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20z"/>'),
+  back10: svg('<path d="' + rew + '"/>', ten),
+  fwd10: svg('<g transform="translate(24 0) scale(-1 1)"><path d="' + rew + '"/></g>', ten),
+  vol: svg('<path d="' + volP + '"/>'),
+  mute: svg('<path d="' + volP + '"/>', '<path d="M4 4l16 16" stroke="currentColor" stroke-width="2" fill="none"/>'),
+  cc: svg('<path fill-rule="evenodd" d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1zm7 0h-1.5v-.5h-2v3h2V13H18v1c0 .55-.45 1-1 1h-3c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1z"/>'),
+  audio: svg('<path d="M12 3v9.28A4 4 0 1 0 14 16V7h4V3h-6z"/>'),
+  src: svg('<path d="M3 5h18v2H3V5zm0 6h18v2H3v-2zm0 6h18v2H3v-2z"/>'),
+  fs: svg('<path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>'),
+  exitfs: svg('<path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>')
+};
+$('#cclose').innerHTML = IC.back;
+$('#cback').innerHTML = IC.back10;
+$('#cfwd').innerHTML = IC.fwd10;
+$('#caudio').innerHTML = IC.audio + '<span>Audio</span>';
+$('#csubs').innerHTML = IC.cc + '<span>Subtitles</span>';
+$('#csrc').innerHTML = IC.src + '<span>Sources</span>';
+$('#cfs').innerHTML = IC.fs + '<span>Fullscreen</span>';
+// Fullscreen: prefer the player container so the on-screen controls stay
+// visible; fall back to the document, then to the native video player.
+const isFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+function updateFullscreenBtn(){
+  const b = $('#cfs');
+  if(!b) return;
+  const on = isFullscreen();
+  b.innerHTML = (on ? IC.exitfs : IC.fs) + '<span>Fullscreen</span>';
+  b.setAttribute('aria-label', on ? 'Exit fullscreen' : 'Enter fullscreen');
+}
+function toggleFullscreen(){
+  if(isFullscreen()){
+    const ex = document.exitFullscreen || document.webkitExitFullscreen;
+    if(ex){ try { const r = ex.call(document); if(r && r.catch) r.catch(() => {}); } catch(e){} }
+    return;
+  }
+  const cands = [$('#player'), document.documentElement];
+  for(const el of cands){
+    if(!el) continue;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen;
+    if(!req) continue;
+    try { const r = req.call(el); if(r && r.catch) r.catch(() => {}); return; } catch(e){}
+  }
+  const v = $('#v');
+  if(v && v.webkitEnterFullscreen){ try { v.webkitEnterFullscreen(); return; } catch(e){} }
+  toast('Fullscreen is not available here');
+}
+document.addEventListener('fullscreenchange', updateFullscreenBtn);
+document.addEventListener('webkitfullscreenchange', updateFullscreenBtn);
+function updateCtrls(){
+  const v = $('#v'), d = isFinite(v.duration) ? v.duration : 0;
+  const left = d ? fmt(d - v.currentTime) : 'LIVE';
+  $('#time').textContent = left;
+  const pct = d ? Math.max(0, Math.min(100, v.currentTime / d * 100)) : 0;
+  $('#fillbar').style.width = pct + '%';
+  $('#bar').setAttribute('aria-valuenow', Math.round(pct));
+  $('#bar').setAttribute('aria-valuetext', d ? fmt(v.currentTime) + ' of ' + fmt(d) : 'Live');
+  $('#cplay').innerHTML = v.paused ? IC.play : IC.pause;
+  $('#cplay').setAttribute('aria-label', v.paused ? 'Play' : 'Pause');
+  $('#cmute').innerHTML = v.muted ? IC.mute : IC.vol;
+  $('#cmute').setAttribute('aria-label', v.muted ? 'Unmute' : 'Mute');
+}
+function showCtrls(focusPlay){
+  $('#ctrls').classList.remove('off'); updateCtrls();
+  clearTimeout(ctrlT); ctrlT = setTimeout(hideCtrls, 4500);
+  if(focusPlay) $('#cplay').focus();
+}
+function hideCtrls(){
+  if(!$('#tracks').classList.contains('hidden')) return;
+  const a = document.activeElement;
+  // Remote-only: the focus ring is the cursor, so never hide the controls
+  // out from under a focused button.
+  if(a && a.closest && a.closest('#ctrls')) return;
+  $('#ctrls').classList.add('off');
+}
+const ctrlsOn = () => !$('#ctrls').classList.contains('off');
+function toggle(){ const v = $('#v'); if(v.paused) v.play().catch(() => {}); else v.pause(); }
+function seek(dt){ const v = $('#v'); v.currentTime = Math.max(0, v.currentTime + dt); }
+// Match a saved preference against a track list: exact code first, then
+// prefix, then name. A plain substring test would match "Slovenian" for "en".
+function matchPref(tracks, pref, langOf, nameOf){
+  const p = String(pref || '').toLowerCase().trim();
+  if(!p || !tracks.length) return -1;
+  let i = tracks.findIndex(t => String(langOf(t) || '').toLowerCase() === p);
+  if(i >= 0) return i;
+  i = tracks.findIndex(t => String(langOf(t) || '').toLowerCase().startsWith(p));
+  if(i >= 0) return i;
+  i = tracks.findIndex(t => String(nameOf(t) || '').toLowerCase().startsWith(p));
+  if(i >= 0) return i;
+  return tracks.findIndex(t => (String(langOf(t) || '') + ' ' + String(nameOf(t) || '')).toLowerCase().includes(p));
+}
+function applyPreferredTracks(){
+  const v=$('#v'), pref=String(store.get('preferredAudio',''));
+  if(pref){
+    if(hls && hls.audioTracks && hls.audioTracks.length){
+      const i = matchPref(hls.audioTracks, pref, t => t.lang, t => t.name);
+      if(i >= 0) hls.audioTrack = i;
+    }
+    else if(v.audioTracks && v.audioTracks.length){
+      const list = Array.from(v.audioTracks);
+      const i = matchPref(list, pref, t => t.language, t => t.label);
+      if(i >= 0) list.forEach((t,k) => t.enabled = k === i);
+    }
+  }
+  const sp=String(store.get('preferredSubtitle','')); if(!sp||sp.toLowerCase()==='off'||curSub)return;
+  let it=null;
+  if(hls && hls.subtitleTracks && hls.subtitleTracks.length){
+    const i = matchPref(hls.subtitleTracks, sp, t => t.lang, t => t.name);
+    if(i >= 0) it={kind:'hls',i};
+  }
+  if(!it){
+    const list=Array.from(v.textTracks);
+    const i = matchPref(list, sp, t => t.language, t => t.label);
+    if(i >= 0) it={kind:'native',t:list[i]};
+  }
+  if(!it){
+    const i = matchPref(subList, sp, () => '', x => x.label);
+    if(i >= 0) it = subList[i];
+  }
+  if(it)pickSub(it);
+}
+// Autoplay is deliberately not a bare .catch(() => {}): a blocked or stalled
+// play() is otherwise indistinguishable from a dead stream.
+function startPlayback(v){
+  const fail = err => {
+    if(err && err.name === 'AbortError') return;   // interrupted by pause/load
+    if($('#player').classList.contains('hidden')) return;
+    showCtrls(); toast('Press Play to start');
+  };
+  let p;
+  try { p = v.play(); } catch(e){ fail(e); return; }
+  if(p && p.catch) p.catch(fail);
+}
+function play(s, title){
+  const v = $('#v');
+  $('#player').classList.remove('hidden'); $('#streams').classList.add('hidden');
+  $('#ptitle').textContent = title;
+  failHandled = false; hlsRetried = false;
+  const ae = document.activeElement; if(ae && ae.closest && ae.closest('#streams')) ae.blur();
+  resetSubs(s);
+  if(hls){ hls.destroy(); hls = null; }
+  const u = s.url;
+  const resume = lastStream.resumeAt != null ? lastStream.resumeAt : resumePosition(lastStream.type,lastStream.id);
+  lastStream.resumeAt = null;
+  // Never leave the previous source playing under a new title.
+  if(!u){ handleStreamFailure(); return; }
+  let hlsPath = false;
+  if(/\.m3u8/i.test(u) && window.Hls && Hls.isSupported()){
+    hlsPath = true;
+    // Keep buffers small (Coolita guide: ~200MB for the whole app) and never
+    // pull a variant bigger than the 720p UI can show.
+    hls = new Hls({ maxBufferLength:30, maxMaxBufferLength:60, maxBufferSize:30*1000*1000, backBufferLength:20, capLevelToPlayerSize:true });
+    const inst = hls;
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      applyPreferredTracks();
+      // Ask for playback only once the manifest is parsed. Calling play()
+      // straight after attachMedia() is what makes HLS autoplay stall.
+      if(inst === hls) startPlayback(v);
+    });
+    hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => { applyPreferredTracks(); });
+    hls.on(Hls.Events.ERROR, (evt, d) => {
+      if(inst !== hls || !d || !d.fatal) return;
+      if(!hlsRetried){
+        hlsRetried = true;
+        if(d.type === Hls.ErrorTypes.NETWORK_ERROR){ try { hls.startLoad(); } catch(e){} return; }
+        if(d.type === Hls.ErrorTypes.MEDIA_ERROR){ try { hls.recoverMediaError(); } catch(e){} return; }
+      }
+      handleStreamFailure();
+    });
+    hls.loadSource(u); hls.attachMedia(v);
+  } else v.src = u;
+  v.addEventListener('loadedmetadata', applyPreferredTracks, {once:true});
+  if(resume > 0){ const seekResume=()=>{try{if(resume < v.duration-3)v.currentTime=resume;}catch(e){} v.removeEventListener('loadedmetadata',seekResume);}; v.addEventListener('loadedmetadata',seekResume); }
+  if(!hlsPath) startPlayback(v);
+  updateFullscreenBtn();
+  showCtrls();
+}
+// Called when the current source cannot be decoded or fetched: try the next
+// available source before giving up.
+function handleStreamFailure(){
+  if(failHandled) return;
+  failHandled = true;
+  const next = currentSources.findIndex((x, i) => i > currentSrcIdx && x && x.s && x.s.url && !(x.s.behaviorHints && x.s.behaviorHints.notWebReady));
+  if(next >= 0){
+    toast('Source failed — trying another one…');
+    currentSrcIdx = next;
+    play(currentSources[next].s, lastStream.title);
+    return;
+  }
+  toast('This stream cannot be played on this TV. Try another source.');
+  closePlayer(true);
+}
+// fromFailure: only a failed stream reopens the source list. A deliberate
+// close (Back / the close button) goes straight back to the library.
+function closePlayer(fromFailure){
+  streamsGen++;   // any lookup still in flight must not reopen the player
+  saveProgress(); clearTimeout(nextTimer); $('#nextOverlay').classList.add('hidden');
+  failHandled = true;
+  const v = $('#v'); v.pause(); v.removeAttribute('src'); v.load();
+  if(hls){ hls.destroy(); hls = null; }
+  if(isFullscreen()){
+    const ex = document.exitFullscreen || document.webkitExitFullscreen;
+    if(ex){ try { const r = ex.call(document); if(r && r.catch) r.catch(() => {}); } catch(e){} }
+  }
+  closeMenu();
+  hideCtrls();
+  $('#player').classList.add('hidden');
+  if(fromFailure && currentSources.length){
+    $('#streams').classList.remove('hidden');
+    const f = document.querySelector('#st-list .f'); if(f) f.focus();
+  } else {
+    const f = document.querySelector(cur === 'detail' ? '#playbtn' : '#hplay'); if(f) f.focus();
+  }
+}
+$('#v').addEventListener('error', () => handleStreamFailure());
+['timeupdate', 'play', 'pause', 'volumechange', 'durationchange'].forEach(ev => $('#v').addEventListener(ev, () => { if(ctrlsOn()) updateCtrls(); }));
+let lastSavedAt = 0;
+$('#v').addEventListener('timeupdate', () => { if(Date.now()-lastSavedAt>3000){ saveProgress(); lastSavedAt=Date.now(); } });
+$('#v').addEventListener('timeupdate', () => applySubtitleDelay(false));
+$('#v').addEventListener('ended', () => {
+  saveProgress(); showCtrls(true);
+  const nxt=lastStream && lastStream.nextEpisode;
+  if(nxt){ $('#nextTitle').textContent='Up next: '+nxt.title; $('#nextOverlay').classList.remove('hidden'); clearTimeout(nextTimer); nextTimer=setTimeout(playNextEpisode,8000); $('#nextPlay').focus(); }
+});
+const epAt = (list, i, seriesName, poster) => (list && i >= 0 && i < list.length) ? epMeta(list[i], seriesName, poster) : null;
+function playNextEpisode(){
+  const nxt = lastStream && lastStream.nextEpisode; if(!nxt) return;
+  clearTimeout(nextTimer); $('#nextOverlay').classList.add('hidden');
+  pendingResume = 0;
+  const L = lastStream.epList, ix = lastStream.epIndex;
+  const ni = (ix == null) ? null : ix + 1;
+  streams(nxt.type, nxt.id, nxt.title, {
+    poster: nxt.poster || '',
+    nextEpisode: ni == null ? null : epAt(L, ni + 1, lastStream.seriesName, lastStream.poster),
+    epList: L, epIndex: ni, seriesName: lastStream.seriesName
+  });
+}
+$('#nextPlay').onclick=playNextEpisode;
+$('#nextCancel').onclick=()=>{clearTimeout(nextTimer);$('#nextOverlay').classList.add('hidden');showCtrls();};
+// Subtitle timing: cues parsed after the button press (or after a source
+// change) must be offset too, so the delay is re-applied whenever cues change.
+const cueBase = new WeakMap(), trackSeen = new WeakMap();
+function applyDelayToTrack(t){
+  if(!t || !t.cues || !t.cues.length) return;
+  const cues = Array.from(t.cues);
+  if(trackSeen.get(t) === cues.length) return;
+  trackSeen.set(t, cues.length);
+  cues.forEach(c => {
+    // The unshifted base time is kept per cue object, so a cue that is
+    // replaced later is offset exactly once.
+    let b = cueBase.get(c);
+    if(!b){ b = { s:c.startTime, e:c.endTime }; cueBase.set(c, b); }
+    c.startTime = Math.max(0, b.s + subtitleDelay);
+    c.endTime = Math.max(c.startTime + .05, b.e + subtitleDelay);
+  });
+}
+function applySubtitleDelay(force){
+  Array.from($('#v').textTracks).forEach(t => { if(force) trackSeen.delete(t); applyDelayToTrack(t); });
+}
+function adjustSubtitleDelay(delta){
+  subtitleDelay=Math.max(-10,Math.min(10,subtitleDelay+delta)); store.set('subtitleDelay',subtitleDelay);
+  applySubtitleDelay(true);
+  toast('Subtitle delay '+(subtitleDelay>=0?'+':'')+subtitleDelay.toFixed(1)+'s');
+}
+$('#subSmaller').onclick=()=>{subtitleSize=Math.max(.7,subtitleSize-.1);store.set('subtitleSize',subtitleSize);applySubtitleSize();toast('Subtitle size reduced');};
+$('#subLarger').onclick=()=>{subtitleSize=Math.min(2.5,subtitleSize+.1);store.set('subtitleSize',subtitleSize);applySubtitleSize();toast('Subtitle size increased');};
+$('#subDelayMinus').onclick=()=>adjustSubtitleDelay(-.5);
+$('#subDelayPlus').onclick=()=>adjustSubtitleDelay(.5);
+$('#cclose').onclick = () => closePlayer();
+$('#st-close').onclick = () => closeSources();
+$('#csrc').onclick = () => { showCtrls(); openSources(); };
+$('#cfs').onclick = () => { toggleFullscreen(); showCtrls(); };
+$('#cback').onclick = () => { seek(-10); showCtrls(); };
+$('#cfwd').onclick = () => { seek(10); showCtrls(); };
+$('#cplay').onclick = () => { toggle(); showCtrls(); };
+$('#bar').onclick = e => {
+  if(!e.detail){ toggle(); showCtrls(); return; }
+  const v = $('#v'), r = e.currentTarget.getBoundingClientRect();
+  if(isFinite(v.duration)) v.currentTime = (e.clientX - r.left) / r.width * v.duration;
+  showCtrls();
+};
+$('#player').addEventListener('mousemove', () => showCtrls());
+$('#v').addEventListener('click', () => { toggle(); showCtrls(); });
+
+// ---------- subtitles and audio ----------
+let subBlobUrl = null, lastStream = {}, subList = [], subPending = 0, menuKind = null, menuBtn = null, curSub = null;
+let currentSources = [], currentSrcIdx = -1, failHandled = true, hlsRetried = false, streamsGen = 0;
+const LANGS = {en:'English',eng:'English',hi:'Hindi',hin:'Hindi',ml:'Malayalam',mal:'Malayalam',ta:'Tamil',tam:'Tamil',te:'Telugu',tel:'Telugu',kn:'Kannada',kan:'Kannada',bn:'Bengali',ben:'Bengali',mr:'Marathi',mar:'Marathi',gu:'Gujarati',guj:'Gujarati',pa:'Punjabi',pan:'Punjabi',ur:'Urdu',urd:'Urdu',ar:'Arabic',ara:'Arabic',es:'Spanish',spa:'Spanish',fr:'French',fre:'French',fra:'French',de:'German',ger:'German',deu:'German',it:'Italian',ita:'Italian',pt:'Portuguese',por:'Portuguese',pob:'Portuguese (Brazil)',pb:'Portuguese (Brazil)',ru:'Russian',rus:'Russian',ja:'Japanese',jpn:'Japanese',ko:'Korean',kor:'Korean',zh:'Chinese',chi:'Chinese',zho:'Chinese',tr:'Turkish',tur:'Turkish',nl:'Dutch',dut:'Dutch',nld:'Dutch',id:'Indonesian',ind:'Indonesian',ms:'Malay',may:'Malay',msa:'Malay',th:'Thai',tha:'Thai',vi:'Vietnamese',vie:'Vietnamese',fa:'Persian',per:'Persian',fas:'Persian',he:'Hebrew',heb:'Hebrew',el:'Greek',ell:'Greek',gre:'Greek',pl:'Polish',pol:'Polish',sv:'Swedish',swe:'Swedish'};
+// Intl.DisplayNames needs Chrome 81+; the table covers older TV engines.
+const langName = c => {
+  if(!c) return 'Unknown';
+  const k = String(c).toLowerCase();
+  if(LANGS[k]) return LANGS[k];
+  try { const n = new Intl.DisplayNames(['en'], { type: 'language' }).of(c); if(n) return n; } catch(e){}
+  return LANGS[k.split(/[-_]/)[0]] || c;
+};
+const toVtt = t => { t = t.replace(/^\uFEFF/, '').replace(/\r/g, ''); return /^WEBVTT/.test(t) ? t : 'WEBVTT\n\n' + t.replace(/(\d+:\d+:\d+),(\d+)/g, '$1.$2'); };
+function dropSubBlob(){ if(subBlobUrl){ try { URL.revokeObjectURL(subBlobUrl); } catch(e){} subBlobUrl = null; } }
+function resetSubs(s){
+  document.querySelectorAll('#v track').forEach(t => t.remove()); dropSubBlob();
+  subList = []; subPending = 0; curSub = null; closeMenu();
+  const count = {};
+  const add = (x, from) => {
+    if(!x || !x.url) return;
+    const code = x.lang || x.id || '';
+    const n = count[code] = (count[code] || 0) + 1;
+    subList.push({ kind: 'ext', url: x.url, label: langName(code) + (n > 1 ? ' ' + n : ''), from });
+  };
+  (s.subtitles || []).forEach(x => add(x, 'stream'));
+  const { type, id } = lastStream;
+  if(type && id) addons.filter(a => supports(a.m, 'subtitles', type, id)).forEach(a => {
+    subPending++;
+    j(a.b + '/subtitles/' + type + '/' + enc(id) + '.json')
+      .then(d => (d.subtitles || []).slice(0, 60).forEach(x => add(x, a.m.name)))
+      .catch(() => {})
+      .finally(() => { subPending--; applyPreferredTracks(); if(menuKind === 'subs') renderMenu(); });
+  });
+}
+async function pickSub(it){
+  const v = $('#v');
+  document.querySelectorAll('#v track').forEach(t => t.remove()); dropSubBlob();
+  Array.from(v.textTracks).forEach(t => t.mode = 'disabled');
+  if(hls) hls.subtitleTrack = -1;
+  curSub = it;
+  if(!it) return;
+  if(it.kind === 'hls'){ hls.subtitleTrack = it.i; return; }
+  if(it.kind === 'native'){ it.t.mode = 'showing'; return; }
+  try {
+    const txt = await fetchText(it.url);
+    const blob = new Blob([toVtt(txt)], { type: 'text/vtt' });
+    const tr = document.createElement('track');
+    tr.kind = 'subtitles'; tr.label = it.label; subBlobUrl = URL.createObjectURL(blob); tr.src = subBlobUrl; tr.default = true;
+    v.appendChild(tr); tr.track.__ext = true; tr.track.mode = 'showing';
+    tr.addEventListener('load', () => applySubtitleDelay(true));
+    applySubtitleDelay(true);
+  } catch(e){ curSub = null; toast('Could not load that subtitle. Try another one.'); }
+}
+function openMenu(kind, btn){
+  menuKind = kind; menuBtn = btn;
+  $('#tracks').classList.remove('hidden'); clearTimeout(ctrlT);
+  renderMenu();
+}
+function closeMenu(){
+  if(!menuKind) return;
+  menuKind = null; $('#tracks').classList.add('hidden');
+  if(menuBtn && !$('#player').classList.contains('hidden')){ showCtrls(); menuBtn.focus(); }
+}
+function renderMenu(){
+  const L = $('#tr-list'), v = $('#v'), items = [];
+  let note = '';
+  const idx = Array.from(L.children).indexOf(document.activeElement);
+  L.innerHTML = '';
+  $('#tr-title').textContent = menuKind === 'audio' ? 'Audio' : 'Subtitles';
+  if(menuKind === 'audio'){
+    if(hls && hls.audioTracks.length > 1) hls.audioTracks.forEach((t, i) => items.push({ label: t.name || langName(t.lang) || 'Track ' + (i + 1), on: hls.audioTrack === i, pick: () => { hls.audioTrack = i; store.set('preferredAudio',String(t.lang||t.name||'')); } }));
+    else if(v.audioTracks && v.audioTracks.length > 1) Array.from(v.audioTracks).forEach((t, i) => items.push({ label: t.label || langName(t.language) || 'Track ' + (i + 1), on: t.enabled, pick: () => { Array.from(v.audioTracks).forEach((x, k) => x.enabled = k === i); store.set('preferredAudio',String(t.language||t.label||'')); } }));
+    else if(hls) note = 'This stream has only one audio track.';
+    else if(v.audioTracks) note = 'This file has only one audio track.';
+    else note = 'This browser cannot switch audio tracks inside a video file, even if the file has several. Pick a stream in the language you want, or use an HLS stream.';
+  } else {
+    items.push({ label: 'Off', on: !curSub, pick: () => { pickSub(null); store.set('preferredSubtitle','off'); } });
+    const nativeTracks = Array.from(v.textTracks).filter(t => !t.__ext && (t.kind === 'subtitles' || t.kind === 'captions'));
+    const hlsSubs = (hls && hls.subtitleTracks) ? hls.subtitleTracks : [];
+    hlsSubs.forEach((t, i) => items.push({ label: t.name || langName(t.lang) || 'Track ' + (i + 1), on: !!curSub && curSub.kind === 'hls' && curSub.i === i, pick: () => { pickSub({ kind: 'hls', i }); store.set('preferredSubtitle',String(t.lang||t.name||'')); } }));
+    // Embedded tracks are hidden only when HLS already exposes the same label.
+    const shown = new Set(hlsSubs.map(t => String(t.name || '')));
+    nativeTracks.filter(t => !shown.has(String(t.label || ''))).forEach(t => items.push({ label: t.label || langName(t.language) || 'Embedded', on: !!curSub && curSub.t === t, pick: () => { pickSub({ kind: 'native', t }); store.set('preferredSubtitle',String(t.language||t.label||'')); } }));
+    subList.forEach(x => items.push({ label: x.label + (x.from === 'stream' ? '' : '  (' + x.from + ')'), on: curSub === x, pick: () => { pickSub(x); store.set('preferredSubtitle',String(x.label||'')); } }));
+    if(subPending) note = 'Looking for more subtitles...';
+    else if(items.length === 1) note = 'No subtitles found. Install a subtitles addon (for example OpenSubtitles) in Addons.';
+  }
+  // Remote-only escape hatch: the menu must always be dismissible from the
+  // D-pad even when the TV browser does not deliver a Back key.
+  items.push({ label: '\u2715 Close', on: false, pick: () => {} });
+  items.forEach(it => {
+    const d = document.createElement('div'); d.className = 'f opt' + (it.on ? ' on' : ''); d.tabIndex = 0;
+    d.setAttribute('role','button'); d.setAttribute('aria-pressed', it.on ? 'true' : 'false');
+    d.textContent = (it.on ? '\u2713 ' : '') + it.label;
+    d.onclick = () => { it.pick(); closeMenu(); };
+    L.appendChild(d);
+  });
+  if(note){ const p = document.createElement('p'); p.className = 'tnote'; p.textContent = note; L.appendChild(p); }
+  const target = (idx >= 0 && L.children[idx]) || L.querySelector('.opt.on') || L.querySelector('.f');
+  if(target && (idx >= 0 || !L.contains(document.activeElement))) target.focus();
+}
+$('#cmute').onclick = () => { const v = $('#v'); v.muted = !v.muted; showCtrls(); };
+$('#caudio').onclick = e => openMenu('audio', e.currentTarget);
+$('#csubs').onclick = e => openMenu('subs', e.currentTarget);
+$('#tracks').addEventListener('click', e => { if(e.target.id === 'tracks') closeMenu(); });
+
+// ---------- settings ----------
+function settings(){
+  show('settings');
+  const urls = store.get('urls', PRESET);
+  const el = $('#settings');
+  el.innerHTML = '<h2>Install an addon</h2><p>Paste a manifest link (it ends in manifest.json). Typing is easier from a phone browser: open this page with ?addon=MANIFEST_URL at the end and it installs itself.</p>' +
+    '<input id="au" class="f" placeholder="https://example.com/manifest.json" tabindex="0" aria-label="Addon manifest link"><span class="f btn w" id="aadd" tabindex="0" role="button">Install</span>' +
+    '<h2>Installed</h2><div id="alist"></div>' +
+    '<h2>Diagnostics</h2><div class="f row2" id="diag" tabindex="0" role="button" aria-label="Diagnostics. Press OK to refresh."></div>';
+  const list = $('#alist');
+  let pendingRemove = -1, removeT = null;
+  urls.forEach((u, i) => {
+    const a = addons.find(x => x.u === u);
+    const d = document.createElement('div'); d.className = 'f row2'; d.tabIndex = 0;
+    d.setAttribute('role','button');
+    d.innerHTML = esc(a ? a.m.name : 'Unreachable') + '<small style="display:block;color:var(--muted)">' + esc(u) + ' (press OK to remove)</small>';
+    d.onclick = async () => {
+      // Two-step removal so an accidental press does not uninstall an addon.
+      if(pendingRemove !== i){
+        pendingRemove = i;
+        d.setAttribute('aria-label', 'Press OK again to remove ' + (a ? a.m.name : u));
+        toast('Press OK again to remove this addon');
+        clearTimeout(removeT);
+        removeT = setTimeout(() => { pendingRemove = -1; d.removeAttribute('aria-label'); }, 4000);
+        return;
+      }
+      clearTimeout(removeT); pendingRemove = -1;
+      const n = store.get('urls', []); n.splice(i, 1); store.set('urls', n);
+      await loadAddons(); settings(); toast('Addon removed');
+    };
+    list.appendChild(d);
+  });
+  $('#aadd').onclick = async () => {
+    const val = $('#au').value.trim(); if(!val) return;
+    try {
+      const b = base(val); const m = await j(b + '/manifest.json', 12000);
+      const n = store.get('urls', []); n.push(b + '/manifest.json'); store.set('urls', n);
+      await loadAddons(); settings(); toast('Installed ' + (m.name || 'addon'));
+    } catch(e){ toast('Could not load that addon. Check the link.'); }
+  };
+  $('#diag').onclick = renderDiag; renderDiag();
+  $('#au').focus();
+}
+
+// ---------- remote control ----------
+function scope(){
+  if(!$('#tracks').classList.contains('hidden')) return '#tracks .f';
+  if(!$('#nextOverlay').classList.contains('hidden')) return '#nextOverlay .f';
+  if(!$('#streams').classList.contains('hidden')) return '#streams .f';
+  if(!$('#player').classList.contains('hidden')) return '#ctrls .f';
+  return '#nav .f, .view:not(.hidden) .f';
+}
+function move(dir){
+  const cur = document.activeElement;
+  const els = Array.from(document.querySelectorAll(scope())).filter(e => e.offsetParent);
+  if(!cur || !els.includes(cur)){ if(els[0]) els[0].focus(); return; }
+  const r = cur.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  let best = null, bs = 1e9;
+  els.forEach(e => {
+    if(e === cur) return;
+    const q = e.getBoundingClientRect(), dx = q.left + q.width / 2 - cx, dy = q.top + q.height / 2 - cy;
+    const ok = dir === 'left' ? dx < -4 : dir === 'right' ? dx > 4 : dir === 'up' ? dy < -4 : dy > 4;
+    if(!ok) return;
+    const horiz = dir === 'left' || dir === 'right';
+    const s = (horiz ? Math.abs(dx) : Math.abs(dy)) + (horiz ? Math.abs(dy) : Math.abs(dx)) * 3;
+    if(s < bs){ bs = s; best = e; }
+  });
+  if(best){ best.focus(); if(best.closest('#nav, #hero, .dhero')) window.scrollTo(0, 0); else best.scrollIntoView({ block: 'center', inline: 'center' }); }
+}
+function goBack(){
+  if(!$('#streams').classList.contains('hidden')){ closeSources(); return; }
+  if(searchActive && cur === 'home'){ searchActive = false; home(); return; }
+  if(cur !== 'home'){ if(homeBuilt){ show('home'); if(lastFocus && document.body.contains(lastFocus)){ lastFocus.focus(); lastFocus.scrollIntoView({ block: 'center' }); } } else home(); return; }
+  // Already at the root. The Coolita integration guide specifies window.close()
+  // as the way to leave an H5 app and return to the launcher. Browsers that
+  // refuse (any window not opened by script) simply ignore it.
+  try { window.close(); } catch(e){}
+}
+// TV browsers frequently deliver only a numeric keyCode, sometimes with
+// e.key left as 'Unidentified'. Map the codes back onto the names the rest
+// of the handler understands.
+let launches = 0;
+function flexGap(){
+  const d = document.createElement('div');
+  d.style.cssText = 'display:flex;flex-direction:column;row-gap:1px;position:absolute;visibility:hidden';
+  d.appendChild(document.createElement('span')); d.appendChild(document.createElement('span'));
+  document.body.appendChild(d);
+  const ok = d.scrollHeight === 1;
+  document.body.removeChild(d);
+  return ok;
+}
+function renderDiag(){
+  const el = $('#diag'); if(!el) return;
+  const ua = navigator.userAgent, m = /Chrome\/(\d+)/.exec(ua);
+  const rows = [
+    ['Engine', m ? 'Chrome ' + m[1] : 'unknown'],
+    ['Coolita UA', /Coolita/i.test(ua) ? 'yes' : 'no'],
+    ['Flex gap', flexGap() ? 'yes' : 'no (layout uses margins)'],
+    ['Intl.DisplayNames', (typeof Intl !== 'undefined' && Intl.DisplayNames) ? 'yes' : 'no (built-in table)'],
+    ['Video engine', (window.MediaSource ? 'MSE yes' : 'MSE no') + ' / ' + (window.Hls ? (Hls.isSupported() ? 'hls.js ready' : 'hls.js unsupported') : 'hls.js not loaded')],
+    ['Fullscreen API', (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen) ? 'yes' : 'no'],
+    ['Storage', 'app opened ' + launches + ' time(s) on record (stuck at 1 = not persisting)'],
+    ['Screen', innerWidth + 'x' + innerHeight + ' @' + (window.devicePixelRatio || 1) + 'x'],
+    ['JS memory', (window.performance && performance.memory) ? Math.round(performance.memory.usedJSHeapSize / 1048576) + ' MB' : 'n/a']
+  ];
+  el.innerHTML = rows.map(r => '<div><b>' + esc(r[0]) + ':</b> ' + esc(r[1]) + '</div>').join('') +
+    '<div style="margin-top:.5rem;color:var(--muted);font-size:.9rem;word-break:break-all">' + esc(ua) + '</div>' +
+    '<div id="diagKey" style="margin-top:.5rem;color:var(--muted)">Press any remote key (try Back) to see its code. OK refreshes.</div>';
+}
+const TV_KEYS = { 37: 'ArrowLeft', 38: 'ArrowUp', 39: 'ArrowRight', 40: 'ArrowDown', 13: 'Enter', 8: 'Backspace', 27: 'Escape' };
+addEventListener('click', e => {
+  const t = e.target && e.target.closest ? e.target.closest('.f') : null;
+  if(t && t.focus){ try { t.focus({ preventScroll: true }); } catch(err) { t.focus(); } }
+}, true);
+// Optional Coolita cursor-hide experiment. Use the on-screen button with the remote OK button.
+// Pointer Lock is opt-in because it can change how the remote moves the pointer.
+function toggleTvPointerLock(){
+  const locked = document.pointerLockElement || document.webkitPointerLockElement;
+  if(locked){
+    const exit = document.exitPointerLock || document.webkitExitPointerLock;
+    if(exit){ try { exit.call(document); } catch(e){} }
+    return;
+  }
+  const target = document.documentElement;
+  const req = target.requestPointerLock || target.webkitRequestPointerLock;
+  if(!req){ toast('Pointer Lock is not supported by this TV browser'); return; }
+  try {
+    const result = req.call(target);
+    if(result && result.catch) result.catch(() => toast('Pointer Lock was blocked by this TV browser'));
+  } catch(e){ toast('Pointer Lock could not be enabled'); }
+}
+addEventListener('pointerlockerror', () => toast('Pointer Lock failed on this TV browser'));
+// Remote-friendly trigger: focus this on-screen control with the pointer or D-pad,
+// then press OK/Enter. No physical P key or keyboard is required.
+(function addRemotePointerLockButton(){
+  const b = document.createElement('button');
+  b.id = 'tvPointerLockTestBtn';
+  b.className = 'f';
+  b.type = 'button';
+  b.textContent = 'Test cursor hide';
+  b.setAttribute('aria-label', 'Test hiding the TV cursor');
+  b.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:2147483647;padding:12px 16px;border:2px solid #fff;border-radius:8px;background:#20242c;color:#fff;font-size:16px;box-shadow:0 2px 12px #0008;';
+  b.addEventListener('click', toggleTvPointerLock);
+  document.body.appendChild(b);
+})();
+
+let tvFullscreenAttempted = false;
+function requestTvFullscreen(){
+  if(tvFullscreenAttempted) return;
+  tvFullscreenAttempted = true;
+  if(document.fullscreenElement || document.webkitFullscreenElement) return;
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen || el.webkitRequestFullScreen;
+  if(req){
+    try { const result = req.call(el); if(result && result.catch) result.catch(() => {}); } catch(e){}
+  }
+}
+addEventListener('keydown', e => {
+  // Ask for fullscreen after the first remote interaction; browser policy may reject it.
+  requestTvFullscreen();
+  const c = e.keyCode;
+  const k = TV_KEYS[c] || e.key;
+  const dk = $('#diagKey'); if(dk && dk.offsetParent) dk.textContent = 'Last key: key="' + e.key + '"  keyCode=' + c;
+  // Leave browser shortcuts (Ctrl+R, F5, F11, ...) alone.
+  if(e.ctrlKey || e.metaKey || e.altKey) return;
+  if(/^F\d+$/.test(k)) return;
+  const act = document.activeElement, inInput = act && act.tagName === 'INPUT';
+  const back = k === 'Escape' || k === 'BrowserBack' || c === 4 || c === 10009 || c === 461 || (k === 'Backspace' && !inInput);
+  if(!$('#player').classList.contains('hidden')){
+    const inCtrls = ctrlsOn() && act && act.closest && act.closest('#ctrls');
+    const playPause = k === ' ' || k === 'MediaPlayPause' || c === 415 || c === 19;
+    const menuOn = !$('#tracks').classList.contains('hidden');
+    const nextOn = !$('#nextOverlay').classList.contains('hidden');
+    const srcOn = !$('#streams').classList.contains('hidden');
+    if(back){ if(nextOn){clearTimeout(nextTimer);$('#nextOverlay').classList.add('hidden');} else if(menuOn) closeMenu(); else if(srcOn) closeSources(); else closePlayer(); }
+    else if(nextOn){ if(k==='ArrowUp') move('up'); else if(k==='ArrowDown') move('down'); else if(k==='Enter' && act) act.click(); }
+    else if(menuOn){ if(k === 'ArrowUp') move('up'); else if(k === 'ArrowDown') move('down'); else if(k === 'Enter' && act) act.click(); }
+    else if(srcOn){ if(k === 'ArrowUp') move('up'); else if(k === 'ArrowDown') move('down'); else if(k === 'Enter' && act) act.click(); }
+    else if(playPause){ toggle(); showCtrls(); }
+    else if(k === 'f' || k === 'F'){ toggleFullscreen(); showCtrls(); }
+    else if(inCtrls){
+      if(act.id === 'bar' && (k === 'ArrowLeft' || k === 'ArrowRight')) seek(k === 'ArrowLeft' ? -10 : 10);
+      else if(k === 'ArrowLeft') move('left');
+      else if(k === 'ArrowRight') move('right');
+      else if(k === 'ArrowUp') move('up');
+      else if(k === 'ArrowDown') move('down');
+      else if(k === 'Enter') act.click();
+      if(ctrlsOn()){ clearTimeout(ctrlT); ctrlT = setTimeout(hideCtrls, 4500); }
+    }
+    else if(k === 'Enter'){ toggle(); showCtrls(); }
+    else if(k === 'ArrowRight' || c === 417){ seek(10); showCtrls(); }
+    else if(k === 'ArrowLeft' || c === 412){ seek(-10); showCtrls(); }
+    else if(k === 'ArrowUp' || k === 'ArrowDown'){ showCtrls(true); }
+    e.preventDefault(); return;
+  }
+  if(back){ e.preventDefault(); goBack(); return; }
+  const dir = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }[k];
+  if(dir){
+    if(inInput && (dir === 'left' || dir === 'right')){
+      // Move the caret inside the field; leave it only from the edge.
+      const n = act.selectionStart, m = act.selectionEnd, len = (act.value || '').length;
+      const atEdge = n === null || (n === m && (dir === 'left' ? n === 0 : n === len));
+      if(!atEdge) return;
+    }
+    e.preventDefault(); move(dir);
+  } else if(k === 'Enter'){
+    if(act && act.id === 'q'){ search(act.value); }
+    else if(act && act.classList.contains('f') && !inInput){ e.preventDefault(); act.click(); }
+  }
+});
+$('#exitbtn').onclick = () => { try { window.close(); } catch(e){} setTimeout(() => toast('Press the Home button on your remote to leave'), 500); };
+document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => b.dataset.go === 'home' ? home() : settings());
+
+// Coolita remotes may control the browser as a mouse pointer instead of
+// dispatching arrow-key events to the page. Keep DOM focus in sync with the
+// item under that pointer, so OK/Enter activates the same item as D-pad mode.
+let pointerFocusT = 0;
+function focusPointerTarget(e){
+  const t = e.target && e.target.closest ? e.target.closest('.f') : null;
+  if(!t || !document.body.contains(t) || t.offsetParent === null) return;
+  // Avoid repeated focus calls from high-frequency mousemove events.
+  if(document.activeElement !== t){
+    clearTimeout(pointerFocusT);
+    pointerFocusT = setTimeout(() => {
+      if(document.body.contains(t) && t.offsetParent !== null && document.activeElement !== t){
+        try { t.focus({ preventScroll: true }); } catch(err) { t.focus(); }
+      }
+    }, 25);
+  }
+}
+addEventListener('mousemove', focusPointerTarget, true);
+addEventListener('mouseover', focusPointerTarget, true);
+addEventListener('pointermove', focusPointerTarget, true);
+// Some TV browsers report OK as a key but do not synthesize a DOM click.
+// If the pointer is over a focusable app item, activate it on Enter as usual.
+// Leaving the app (launcher takeover, screen off) must not leave the decoder
+// running: on these boxes that is what produces a dead player on return.
+document.addEventListener('visibilitychange', () => {
+  if(!document.hidden) return;
+  const v = $('#v');
+  if(v && !v.paused){ try { v.pause(); } catch(e){} }
+});
+
+// ---------- start ----------
+(async () => {
+  // Paint a shell immediately so a slow or unreachable addon cannot leave the
+  // screen blank while the manifests are fetched.
+  launches = Number(store.get('launches', 0)) + 1; store.set('launches', launches);
+  show('home'); homeBuilt = true;
+  const shell = '<div id="hero" class="hero2 hidden"></div><div id="rows">';
+  // A TV browser old enough to lack fetch() cannot reach any addon. Say so
+  // instead of sitting on "Loading addons…" forever with no explanation.
+  if(typeof fetch !== 'function'){
+    $('#home').innerHTML = shell + '<div class="msg">This browser cannot load addons: it has no fetch() support.<br>Update the TV browser, or open the app in a newer one.</div></div>';
+    return;
+  }
+  $('#home').innerHTML = shell + '<div class="msg">Loading addons…</div></div>';
+  await loadAddons();
+  home();
+})();
+</script>
+</body>
+</html>
