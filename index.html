@@ -1536,6 +1536,7 @@ function renderDiag(){
     '<div id="diagDrm"><b>DRM:</b> testing…</div>' +
     '<div id="diagUa"><b>Device model:</b> n/a</div>' +
     '<div style="margin-top:.5rem;color:var(--muted);font-size:.9rem;word-break:break-all">' + esc(ua) + '</div>' +
+    '<div id="diagProbe" style="margin-top:.6rem;color:var(--muted);white-space:pre-line"></div>' +
     '<div id="diagKey" style="margin-top:.5rem;color:var(--muted)">Press any remote key (try Back) to see its code. OK refreshes.</div>';
   // These probes are async, so they update in place without delaying settings.
   if(navigator.userAgentData && navigator.userAgentData.getHighEntropyValues){
@@ -1718,6 +1719,45 @@ document.addEventListener('visibilitychange', () => {
   if(v && !v.paused){ try { v.pause(); } catch(e){} }
 });
 addEventListener('pagehide', () => { saveProgress(); cancelNextAutoplay(); });
+
+// ---------- cursor probe (passive, diagnostics only) ----------
+// Counts events only; never calls preventDefault, focus or any app function,
+// so it cannot change navigation. Results show in Addons > Diagnostics.
+const cursorProbe = { keyArrow:0, keyEnter:0, keyOther:0, keyPrevented:0, keyNotPrevented:0, mm:0, pm:0, mmAfterKey:0, mmNoKey:0, lastKeyT:0, lastGapMs:-1, pType:'-', lastMM:'-', fs:'-', lastKey:'-' };
+function probeRender(){
+  const d = document.getElementById('diagProbe'); if(!d) return;
+  cursorProbe.fs = (document.fullscreenElement || document.webkitFullscreenElement) ? 'yes' : 'no';
+  d.textContent = 'CURSOR PROBE (press arrows, then read)\n' +
+    'Arrow keydown reached page: ' + cursorProbe.keyArrow + '  (Enter: ' + cursorProbe.keyEnter + ', other: ' + cursorProbe.keyOther + ')\n' +
+    'Arrow keydown preventDefault honoured: ' + cursorProbe.keyPrevented + ' yes / ' + cursorProbe.keyNotPrevented + ' no\n' +
+    'mousemove: ' + cursorProbe.mm + '  pointermove: ' + cursorProbe.pm + '  pointerType: ' + cursorProbe.pType + '\n' +
+    'mousemove within 400ms after a key: ' + cursorProbe.mmAfterKey + '  with no recent key: ' + cursorProbe.mmNoKey + '\n' +
+    'Last key-to-mousemove gap: ' + cursorProbe.lastGapMs + ' ms   last mouse pos: ' + cursorProbe.lastMM + '\n' +
+    'Last key: ' + cursorProbe.lastKey + '   Fullscreen active: ' + cursorProbe.fs;
+}
+if (document.documentElement.classList.contains('tv')) {
+  let probeRaf = 0;
+  const probeSoon = () => { if(probeRaf) return; probeRaf = nextFrame(() => { probeRaf = 0; probeRender(); }); };
+  addEventListener('keydown', e => {
+    cursorProbe.lastKeyT = Date.now();
+    cursorProbe.lastKey = e.key + '/' + e.keyCode;
+    const isArrow = e.keyCode >= 37 && e.keyCode <= 40;
+    if(isArrow) cursorProbe.keyArrow++; else if(e.keyCode === 13) cursorProbe.keyEnter++; else cursorProbe.keyOther++;
+    if(isArrow) setTimeout(() => { if(e.defaultPrevented) cursorProbe.keyPrevented++; else cursorProbe.keyNotPrevented++; probeSoon(); }, 0);
+    probeSoon();
+  }, true);
+  addEventListener('mousemove', e => {
+    cursorProbe.mm++;
+    const gap = Date.now() - cursorProbe.lastKeyT;
+    if(cursorProbe.lastKeyT && gap < 400){ cursorProbe.mmAfterKey++; cursorProbe.lastGapMs = gap; } else cursorProbe.mmNoKey++;
+    cursorProbe.lastMM = e.clientX + ',' + e.clientY;
+    probeSoon();
+  }, true);
+  addEventListener('pointermove', e => { cursorProbe.pm++; cursorProbe.pType = e.pointerType || '?'; probeSoon(); }, true);
+  document.addEventListener('fullscreenchange', probeSoon);
+  document.addEventListener('webkitfullscreenchange', probeSoon);
+  setInterval(probeRender, 1000);
+}
 
 // ---------- start ----------
 (async () => {
