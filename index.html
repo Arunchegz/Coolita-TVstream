@@ -26,7 +26,7 @@ html.tv *::before,
 html.tv *::after {
   /* Older Coolita Chromium may ignore cursor:none for its native pointer.
      A transparent custom cursor is a second way to hide the browser cursor. */
-  cursor: url("data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=") 0 0, none !important;
+  cursor: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/S3sAAAAASUVORK5CYII=") 0 0, none !important;
 }
 html{font-size:1.25vw;font-size:clamp(12px,1.25vw,26px);background:var(--bg)}
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
@@ -1677,11 +1677,11 @@ addEventListener('pointermove', queuePointerFocus, true);
 if (document.documentElement.classList.contains('tv')) {
   function suppressWebCursor(root) {
     try {
-      root.style.setProperty('cursor', 'none', 'important');
+      root.style.setProperty('cursor', 'url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/S3sAAAAASUVORK5CYII=) 0 0, none', 'important');
       if (root.querySelectorAll) {
         const nodes = root.querySelectorAll('*');
         for (let i = 0; i < nodes.length; i++) {
-          nodes[i].style.setProperty('cursor', 'none', 'important');
+          nodes[i].style.setProperty('cursor', 'url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/S3sAAAAASUVORK5CYII=) 0 0, none', 'important');
         }
       }
     } catch (e) {}
