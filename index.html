@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TVStream</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#141414">
+<link rel="icon" href="./tvstream-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./tvstream-icon.svg">
 <script>
 (function () {
   // Detect Coolita/Smart-TV before the stylesheet is parsed.
@@ -1732,6 +1736,16 @@ addEventListener('pagehide', () => { saveProgress(); cancelNextAutoplay(); });
   await loadAddons();
   home();
 })();
+</script>
+<script>
+// Service workers are optional for playback; register only when supported.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("./service-worker.js").catch(function (err) {
+      console.warn("TVStream offline support unavailable:", err);
+    });
+  });
+}
 </script>
 </body>
 </html>
