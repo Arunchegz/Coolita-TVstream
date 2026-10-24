@@ -1350,7 +1350,8 @@ function settings(){
   el.innerHTML = '<h2>Install an addon</h2><p>Paste a manifest link (it ends in manifest.json). Typing is easier from a phone browser: open this page with ?addon=MANIFEST_URL at the end and it installs itself.</p>' +
     '<input id="au" class="f" placeholder="https://example.com/manifest.json" tabindex="0" aria-label="Addon manifest link"><span class="f btn w" id="aadd" tabindex="0" role="button">Install</span>' +
     '<h2>Installed</h2><div id="alist"></div>' +
-    '<h2>Diagnostics</h2><div class="f row2" id="diag" tabindex="0" role="button" aria-label="Diagnostics. Press OK to refresh."></div>';
+    '<h2>Diagnostics</h2><div class="f row2" id="diag" tabindex="0" role="button" aria-label="Diagnostics. Press OK to refresh."></div>' +
+    '<div class="f row2" id="plTest" tabindex="0" role="button">Pointer lock test (OK = run for 6 s, then it releases itself)</div><div class="row2" id="plResult" style="white-space:pre-line;color:var(--muted)">Not run yet.</div>';
   const list = $('#alist');
   let pendingRemove = -1, removeT = null;
   urls.forEach((u, i) => {
@@ -1397,7 +1398,7 @@ function settings(){
       toast('Installed ' + (m.name || 'addon'));
     } catch(e){ toast('Could not load that addon. Check the link.'); }
   };
-  $('#diag').onclick = renderDiag; renderDiag();
+  $('#diag').onclick = renderDiag; renderDiag(); const plt = $('#plTest'); if(plt) plt.onclick = runPointerLockTest;
   $('#au').focus();
 }
 
@@ -1757,6 +1758,54 @@ if (document.documentElement.classList.contains('tv')) {
   document.addEventListener('fullscreenchange', probeSoon);
   document.addEventListener('webkitfullscreenchange', probeSoon);
   setInterval(probeRender, 1000);
+}
+
+// Opt-in Pointer Lock test (Diagnostics only). Never runs automatically and
+// always releases itself, so it cannot strand tile navigation like the old experiment.
+function runPointerLockTest(){
+  const out = document.getElementById('plResult'); if(!out) return;
+  const el = document.documentElement;
+  const log = [];
+  const show = () => { out.textContent = log.join('\n'); };
+  const rpl = el.requestPointerLock || el.webkitRequestPointerLock || el.mozRequestPointerLock;
+  log.push('requestPointerLock exists: ' + (rpl ? 'yes' : 'NO'));
+  log.push('Fullscreen active: ' + ((document.fullscreenElement || document.webkitFullscreenElement) ? 'yes' : 'no'));
+  if(!rpl){ show(); return; }
+  let locked = false, moves = 0, sumX = 0, sumY = 0, absMoves = 0, keys = 0, arrowKeys = 0;
+  const onMove = e => { moves++; sumX += (e.movementX || 0); sumY += (e.movementY || 0); if(e.movementX || e.movementY) absMoves++; };
+  const onKey = e => { keys++; if(e.keyCode >= 37 && e.keyCode <= 40) arrowKeys++; };
+  const onChange = () => {
+    locked = !!(document.pointerLockElement || document.webkitPointerLockElement);
+    log.push('pointerlockchange -> locked: ' + (locked ? 'YES' : 'no'));
+    show();
+  };
+  const onErr = () => { log.push('pointerlockerror fired'); show(); };
+  document.addEventListener('pointerlockchange', onChange);
+  document.addEventListener('webkitpointerlockchange', onChange);
+  document.addEventListener('pointerlockerror', onErr);
+  document.addEventListener('webkitpointerlockerror', onErr);
+  addEventListener('mousemove', onMove, true);
+  addEventListener('keydown', onKey, true);
+  try {
+    const r = rpl.call(el);
+    if(r && r.then) r.then(() => { log.push('promise: resolved'); show(); }, err => { log.push('promise: rejected ' + (err && err.name) + ' ' + (err && err.message)); show(); });
+  } catch(err){ log.push('threw: ' + err.name + ' ' + err.message); }
+  log.push('LOCK TEST RUNNING. Press the arrow keys now and watch whether the cursor is visible.');
+  show();
+  setTimeout(() => {
+    try { (document.exitPointerLock || document.webkitExitPointerLock || function(){}).call(document); } catch(e){}
+    document.removeEventListener('pointerlockchange', onChange);
+    document.removeEventListener('webkitpointerlockchange', onChange);
+    document.removeEventListener('pointerlockerror', onErr);
+    document.removeEventListener('webkitpointerlockerror', onErr);
+    removeEventListener('mousemove', onMove, true);
+    removeEventListener('keydown', onKey, true);
+    log.push('RESULT: locked at some point: ' + (locked ? 'yes' : 'no (or already released)') +
+      ' | mousemove: ' + moves + ' | with movementX/Y: ' + absMoves + ' | sum dx,dy: ' + sumX + ',' + sumY +
+      ' | arrow keydowns: ' + arrowKeys + ' / all keydowns: ' + keys);
+    log.push('Released.');
+    show();
+  }, 6000);
 }
 
 // ---------- start ----------
