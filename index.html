@@ -1566,6 +1566,20 @@ addEventListener('click', e => {
 // Remote-friendly activation: some TV browsers dispatch a key but not a click.
 
 let tvFullscreenAttempted = false;
+let tvPointerLockAttempted = false;
+function requestTvPointerLock(){
+  // Experimental: some TV browsers allow pointer lock from a remote key event.
+  // It hides the page pointer while locked; unsupported browsers safely ignore it.
+  if(tvPointerLockAttempted || !document.documentElement.classList.contains('tv')) return;
+  tvPointerLockAttempted = true;
+  const target = document.documentElement;
+  const lock = target.requestPointerLock || target.webkitRequestPointerLock;
+  if(!lock) return;
+  try {
+    const result = lock.call(target);
+    if(result && typeof result.catch === 'function') result.catch(() => {});
+  } catch(err) {}
+}
 function requestTvFullscreen(){
   if(tvFullscreenAttempted) return;
   tvFullscreenAttempted = true;
@@ -1579,6 +1593,7 @@ function requestTvFullscreen(){
 addEventListener('keydown', e => {
   // Ask for fullscreen after the first remote interaction; browser policy may reject it.
   requestTvFullscreen();
+  requestTvPointerLock();
   const c = e.keyCode;
   const k = TV_KEYS[c] || e.key;
   const dk = $('#diagKey'); if(dk && dk.getClientRects().length) dk.textContent = 'Last key: key="' + e.key + '"  keyCode=' + c;
@@ -1667,9 +1682,14 @@ function queuePointerFocus(e){
   if(pointerRaf) return;
   pointerRaf = nextFrame(() => { pointerRaf = 0; if(pointerTarget) focusPointerTarget({ target: pointerTarget }); });
 }
-addEventListener('mousemove', queuePointerFocus, true);
-addEventListener('mouseover', queuePointerFocus, true);
-addEventListener('pointermove', queuePointerFocus, true);
+// On Coolita, remote arrow presses can be emulated as mouse movement.
+ // Do not let that synthetic pointer steal focus from D-pad tile navigation.
+ // Desktop browsers keep the existing pointer-to-focus behaviour.
+if (!document.documentElement.classList.contains('tv')) {
+  addEventListener('mousemove', queuePointerFocus, true);
+  addEventListener('mouseover', queuePointerFocus, true);
+  addEventListener('pointermove', queuePointerFocus, true);
+}
 
 // Re-apply cursor suppression on Coolita in case its older Chromium engine
 // or dynamically-created controls override the stylesheet. This hides the
