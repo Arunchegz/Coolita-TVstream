@@ -4,12 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TVStream</title>
-<script>if(/Coolita|Smart-TV/i.test(navigator.userAgent)) document.documentElement.className += ' tv';</script>
+<script>
+(function () {
+  // Detect Coolita/Smart-TV before the stylesheet is parsed.
+  if (/Coolita|Smart-TV/i.test(navigator.userAgent)) {
+    document.documentElement.classList.add('tv');
+  }
+})();
+</script>
 <style>
 :root{--bg:#141414;--surface:#262626;--surface2:#3b3b3b;--text:#fff;--muted:#b3b3b3;--accent:#e50914}
 *{box-sizing:border-box;margin:0}
 /* Hide the browser cursor only on the TV. Desktop previews keep a normal mouse. */
-.tv,.tv body,.tv body *{cursor:none!important}
+html.tv,
+html.tv *,
+html.tv *::before,
+html.tv *::after {
+  cursor: none !important;
+}
 html{font-size:1.25vw;font-size:clamp(12px,1.25vw,26px);background:var(--bg)}
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 body{font-family:"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:var(--text);background:var(--bg);min-height:100vh;overflow-x:hidden}
@@ -1652,6 +1664,42 @@ function queuePointerFocus(e){
 addEventListener('mousemove', queuePointerFocus, true);
 addEventListener('mouseover', queuePointerFocus, true);
 addEventListener('pointermove', queuePointerFocus, true);
+
+// Re-apply cursor suppression on Coolita in case its older Chromium engine
+// or dynamically-created controls override the stylesheet. This hides the
+// webpage cursor only; it cannot hide a pointer drawn by Coolita's system UI.
+if (document.documentElement.classList.contains('tv')) {
+  function suppressWebCursor(root) {
+    try {
+      root.style.setProperty('cursor', 'none', 'important');
+      if (root.querySelectorAll) {
+        const nodes = root.querySelectorAll('*');
+        for (let i = 0; i < nodes.length; i++) {
+          nodes[i].style.setProperty('cursor', 'none', 'important');
+        }
+      }
+    } catch (e) {}
+  }
+
+  suppressWebCursor(document.documentElement);
+  if (document.body) suppressWebCursor(document.body);
+
+  // Reapply to newly inserted UI elements, without changing focus or clicks.
+  if (typeof MutationObserver === 'function') {
+    const cursorObserver = new MutationObserver(records => {
+      records.forEach(record => {
+        for (let i = 0; i < record.addedNodes.length; i++) {
+          const node = record.addedNodes[i];
+          if (node && node.nodeType === 1) suppressWebCursor(node);
+        }
+      });
+    });
+    cursorObserver.observe(document.documentElement, {
+      childList: true,
+      subtree: true
+    });
+  }
+}
 // Some TV browsers report OK as a key but do not synthesize a DOM click.
 // If the pointer is over a focusable app item, activate it on Enter as usual.
 // Leaving the app (launcher takeover, screen off) must not leave the decoder
