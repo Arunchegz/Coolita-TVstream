@@ -1,0 +1,20 @@
+{
+  "id": "./index.html",
+  "name": "TVStream",
+  "short_name": "TVStream",
+  "description": "TV-friendly streaming hub",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#141414",
+  "theme_color": "#141414",
+  "icons": [
+    {
+      "src": "./tvstream-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
